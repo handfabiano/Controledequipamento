@@ -1,4 +1,4 @@
-const { db, getAsync, allAsync, runAsync, gerarTombamento } = require('../database/init');
+const { db, getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
 
 const equipamentosController = {
@@ -102,19 +102,43 @@ const equipamentosController = {
   // Criar equipamento
   async criar(req, res) {
     try {
-      const { codigo, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes } = req.body;
+      let { codigo, prefixo, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes } = req.body;
 
-      if (!codigo || !nome || !categoria_id) {
-        return res.status(400).json({ error: 'Código, nome e categoria são obrigatórios' });
+      if (!nome || !categoria_id) {
+        return res.status(400).json({ error: 'Nome e categoria são obrigatórios' });
+      }
+
+      // Gerar ou validar código
+      if (!codigo && !prefixo) {
+        return res.status(400).json({
+          error: 'Código ou prefixo é obrigatório',
+          exemplo: 'Código completo: MIC0001 ou Prefixo: MIC (sistema gera automaticamente MIC0001, MIC0002, etc)'
+        });
+      }
+
+      // Se foi fornecido apenas o prefixo (3 letras), gerar código automaticamente
+      if (prefixo && !codigo) {
+        if (prefixo.length !== 3 || !/^[A-Z]{3}$/.test(prefixo)) {
+          return res.status(400).json({ error: 'Prefixo deve conter exatamente 3 letras maiúsculas (ex: MIC, CAI, MES)' });
+        }
+        codigo = await gerarCodigo(prefixo);
+      }
+
+      // Validar formato do código (XXX0000)
+      if (!/^[A-Z]{3}\d{4}$/.test(codigo)) {
+        return res.status(400).json({
+          error: 'Código deve estar no formato XXX0000 (3 letras maiúsculas + 4 números)',
+          exemplo: 'MIC0001, CAI0025, MES0003'
+        });
       }
 
       // Verificar se código já existe
       const existe = await getAsync('SELECT id FROM equipamentos WHERE codigo = ?', [codigo]);
       if (existe) {
-        return res.status(400).json({ error: 'Código já existe' });
+        return res.status(400).json({ error: `Código ${codigo} já existe` });
       }
 
-      // Gerar tombamento único
+      // Gerar tombamento único (uso interno apenas)
       let tombamento = gerarTombamento();
       let tombamentoExiste = await getAsync('SELECT id FROM equipamentos WHERE tombamento = ?', [tombamento]);
 
@@ -143,7 +167,7 @@ const equipamentosController = {
           res.status(201).json({
             message: 'Equipamento criado com sucesso',
             id: this.lastID,
-            tombamento: tombamento
+            codigo: codigo
           });
         }
       );
@@ -358,7 +382,6 @@ const equipamentosController = {
 
       res.json({
         qrcode: qrCodeDataURL,
-        tombamento: equipamento.tombamento,
         equipamento: {
           id: equipamento.id,
           codigo: equipamento.codigo,
@@ -401,7 +424,7 @@ const equipamentosController = {
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>Etiqueta - ${equipamento.tombamento}</title>
+          <title>Etiqueta - ${equipamento.codigo}</title>
           <style>
             @page { size: 10cm 5cm; margin: 0; }
             body {
@@ -426,40 +449,41 @@ const equipamentosController = {
               justify-content: space-between;
             }
             .header {
-              font-size: 14px;
+              font-size: 12px;
               font-weight: bold;
-              margin-bottom: 5px;
+              margin-bottom: 3px;
+              color: #666;
             }
-            .tombamento {
-              font-size: 18px;
+            .codigo {
+              font-size: 24px;
               font-weight: bold;
               margin: 5px 0;
-              letter-spacing: 1px;
+              letter-spacing: 2px;
+              color: #000;
             }
             .info {
               font-size: 11px;
-              margin: 3px 0;
+              margin: 2px 0;
             }
             .qrcode {
-              margin: 10px auto;
+              margin: 8px auto;
             }
             .qrcode img {
-              width: 150px;
-              height: 150px;
+              width: 140px;
+              height: 140px;
             }
             .footer {
-              font-size: 9px;
-              color: #666;
-              margin-top: 5px;
+              font-size: 8px;
+              color: #999;
+              margin-top: 3px;
             }
           </style>
         </head>
         <body>
           <div class="etiqueta">
             <div>
-              <div class="header">PATRIMÔNIO</div>
-              <div class="tombamento">${equipamento.tombamento}</div>
-              <div class="info"><strong>${equipamento.codigo}</strong></div>
+              <div class="header">EQUIPAMENTO</div>
+              <div class="codigo">${equipamento.codigo}</div>
               <div class="info">${equipamento.nome}</div>
               <div class="info">${equipamento.marca || ''} ${equipamento.modelo || ''}</div>
             </div>
@@ -467,7 +491,7 @@ const equipamentosController = {
               <img src="${qrCodeDataURL}" alt="QR Code" />
             </div>
             <div class="footer">
-              Sistema de Gestão de Equipamentos
+              Escaneie o QR Code para mais informações
             </div>
           </div>
         </body>

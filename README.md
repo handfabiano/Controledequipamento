@@ -5,7 +5,16 @@ Sistema completo para controle e gestão de equipamentos de som e iluminação p
 ## Funcionalidades Principais
 
 ### 1. Gestão de Equipamentos
-- Cadastro completo de equipamentos com código, categoria, marca e modelo
+- **Sistema de Código Único:** Formato XXX0000 (3 letras + 4 números)
+  - Exemplos: MIC0001, CAI0025, MES0003, PAR0012
+  - Geração automática por prefixo ou manual
+  - Validação de formato e unicidade
+- **QR Code e Etiquetas:**
+  - Geração automática de QR Code por equipamento
+  - Etiquetas prontas para impressão (10cm x 5cm)
+  - Scanner via app mobile para identificação rápida
+  - Tombamento interno para rastreamento administrativo
+- Cadastro completo com categoria, marca e modelo
 - Controle de status (disponível, em uso, manutenção, com problema, transferência)
 - Controle de condição (excelente, bom, regular, ruim, quebrado)
 - Sistema de reporte de problemas com níveis de gravidade
@@ -14,6 +23,10 @@ Sistema completo para controle e gestão de equipamentos de som e iluminação p
 
 ### 2. Sistema de Transferências com Aprovação Tripla
 - Transferência de equipamentos entre depósitos, eventos ou responsáveis
+- **Transferências entre Eventos Simultâneos:**
+  - Validação automática de eventos acontecendo ao mesmo tempo
+  - Transferência urgente de equipamentos entre locais diferentes
+  - Sistema de aprovação tripla aplicado
 - **Aprovação em 3 etapas:**
   1. **Coordenador:** Aprova a transferência
   2. **Responsável pela Entrega:** Confirma a retirada/entrega
