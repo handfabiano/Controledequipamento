@@ -1,4 +1,5 @@
-const { db, getAsync, allAsync, runAsync } = require('../database/init');
+const { db, getAsync, allAsync, runAsync, gerarTombamento } = require('../database/init');
+const QRCode = require('qrcode');
 
 const equipamentosController = {
   // Listar todos os equipamentos com filtros
@@ -33,9 +34,9 @@ const equipamentosController = {
       }
 
       if (search) {
-        query += ' AND (e.codigo LIKE ? OR e.nome LIKE ? OR e.marca LIKE ? OR e.modelo LIKE ?)';
+        query += ' AND (e.codigo LIKE ? OR e.tombamento LIKE ? OR e.nome LIKE ? OR e.marca LIKE ? OR e.modelo LIKE ?)';
         const searchParam = `%${search}%`;
-        params.push(searchParam, searchParam, searchParam, searchParam);
+        params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
       }
 
       query += ' ORDER BY e.codigo';
@@ -113,10 +114,20 @@ const equipamentosController = {
         return res.status(400).json({ error: 'Código já existe' });
       }
 
+      // Gerar tombamento único
+      let tombamento = gerarTombamento();
+      let tombamentoExiste = await getAsync('SELECT id FROM equipamentos WHERE tombamento = ?', [tombamento]);
+
+      // Garantir que o tombamento é único
+      while (tombamentoExiste) {
+        tombamento = gerarTombamento();
+        tombamentoExiste = await getAsync('SELECT id FROM equipamentos WHERE tombamento = ?', [tombamento]);
+      }
+
       db.run(
-        `INSERT INTO equipamentos (codigo, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [codigo, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao || 'bom', observacoes],
+        `INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao || 'bom', observacoes],
         async function(err) {
           if (err) {
             console.error('Erro ao criar equipamento:', err);
@@ -131,7 +142,8 @@ const equipamentosController = {
 
           res.status(201).json({
             message: 'Equipamento criado com sucesso',
-            id: this.lastID
+            id: this.lastID,
+            tombamento: tombamento
           });
         }
       );
@@ -283,6 +295,190 @@ const equipamentosController = {
     } catch (error) {
       console.error('Erro ao listar categorias:', error);
       res.status(500).json({ error: 'Erro ao listar categorias' });
+    }
+  },
+
+  // Buscar equipamento por tombamento
+  async buscarPorTombamento(req, res) {
+    try {
+      const { tombamento } = req.params;
+
+      const equipamento = await getAsync(`
+        SELECT e.*, c.nome as categoria_nome, c.tipo as categoria_tipo,
+               d.nome as deposito_nome
+        FROM equipamentos e
+        LEFT JOIN categorias_equipamentos c ON e.categoria_id = c.id
+        LEFT JOIN depositos d ON e.deposito_id = d.id
+        WHERE e.tombamento = ?
+      `, [tombamento]);
+
+      if (!equipamento) {
+        return res.status(404).json({ error: 'Equipamento não encontrado' });
+      }
+
+      // Buscar problemas ativos
+      const problemas = await allAsync(
+        'SELECT * FROM problemas_equipamentos WHERE equipamento_id = ? AND resolvido = 0 ORDER BY data_relato DESC',
+        [equipamento.id]
+      );
+
+      equipamento.problemas_ativos = problemas;
+
+      res.json(equipamento);
+    } catch (error) {
+      console.error('Erro ao buscar equipamento por tombamento:', error);
+      res.status(500).json({ error: 'Erro ao buscar equipamento' });
+    }
+  },
+
+  // Gerar QR Code para equipamento
+  async gerarQRCode(req, res) {
+    try {
+      const { id } = req.params;
+
+      const equipamento = await getAsync('SELECT * FROM equipamentos WHERE id = ?', [id]);
+
+      if (!equipamento) {
+        return res.status(404).json({ error: 'Equipamento não encontrado' });
+      }
+
+      // Dados para o QR Code (tombamento)
+      const qrData = equipamento.tombamento;
+
+      // Gerar QR Code em base64
+      const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+        errorCorrectionLevel: 'H',
+        type: 'image/png',
+        width: 300,
+        margin: 2
+      });
+
+      // Atualizar flag de QR Code gerado
+      await runAsync('UPDATE equipamentos SET qrcode_gerado = 1 WHERE id = ?', [id]);
+
+      res.json({
+        qrcode: qrCodeDataURL,
+        tombamento: equipamento.tombamento,
+        equipamento: {
+          id: equipamento.id,
+          codigo: equipamento.codigo,
+          nome: equipamento.nome
+        }
+      });
+    } catch (error) {
+      console.error('Erro ao gerar QR Code:', error);
+      res.status(500).json({ error: 'Erro ao gerar QR Code' });
+    }
+  },
+
+  // Gerar etiqueta completa (HTML para impressão)
+  async gerarEtiqueta(req, res) {
+    try {
+      const { id } = req.params;
+
+      const equipamento = await getAsync(`
+        SELECT e.*, c.nome as categoria_nome
+        FROM equipamentos e
+        LEFT JOIN categorias_equipamentos c ON e.categoria_id = c.id
+        WHERE e.id = ?
+      `, [id]);
+
+      if (!equipamento) {
+        return res.status(404).json({ error: 'Equipamento não encontrado' });
+      }
+
+      // Gerar QR Code
+      const qrCodeDataURL = await QRCode.toDataURL(equipamento.tombamento, {
+        errorCorrectionLevel: 'H',
+        type: 'image/png',
+        width: 200,
+        margin: 1
+      });
+
+      // HTML da etiqueta
+      const etiquetaHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Etiqueta - ${equipamento.tombamento}</title>
+          <style>
+            @page { size: 10cm 5cm; margin: 0; }
+            body {
+              margin: 0;
+              padding: 10px;
+              font-family: Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 5cm;
+              width: 10cm;
+            }
+            .etiqueta {
+              border: 2px solid #000;
+              padding: 10px;
+              text-align: center;
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+            }
+            .header {
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 5px;
+            }
+            .tombamento {
+              font-size: 18px;
+              font-weight: bold;
+              margin: 5px 0;
+              letter-spacing: 1px;
+            }
+            .info {
+              font-size: 11px;
+              margin: 3px 0;
+            }
+            .qrcode {
+              margin: 10px auto;
+            }
+            .qrcode img {
+              width: 150px;
+              height: 150px;
+            }
+            .footer {
+              font-size: 9px;
+              color: #666;
+              margin-top: 5px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="etiqueta">
+            <div>
+              <div class="header">PATRIMÔNIO</div>
+              <div class="tombamento">${equipamento.tombamento}</div>
+              <div class="info"><strong>${equipamento.codigo}</strong></div>
+              <div class="info">${equipamento.nome}</div>
+              <div class="info">${equipamento.marca || ''} ${equipamento.modelo || ''}</div>
+            </div>
+            <div class="qrcode">
+              <img src="${qrCodeDataURL}" alt="QR Code" />
+            </div>
+            <div class="footer">
+              Sistema de Gestão de Equipamentos
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      res.setHeader('Content-Type', 'text/html');
+      res.send(etiquetaHTML);
+    } catch (error) {
+      console.error('Erro ao gerar etiqueta:', error);
+      res.status(500).json({ error: 'Erro ao gerar etiqueta' });
     }
   }
 };

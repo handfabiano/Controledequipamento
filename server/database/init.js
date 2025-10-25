@@ -66,6 +66,13 @@ async function initializeDatabase() {
   }
 }
 
+// Função para gerar número de tombamento
+function gerarTombamento() {
+  const ano = new Date().getFullYear();
+  const random = Math.floor(Math.random() * 999999).toString().padStart(6, '0');
+  return `TOMB-${ano}-${random}`;
+}
+
 async function insertInitialData() {
   const senhaHash = await bcrypt.hash('123456', 10);
 
@@ -124,34 +131,34 @@ async function insertInitialData() {
   // Equipamentos de exemplo
   const equipamentos = [
     // Microfones
-    { codigo: 'MIC-001', nome: 'Microfone Shure SM58', categoria_id: 1, marca: 'Shure', modelo: 'SM58', deposito_id: 1 },
-    { codigo: 'MIC-002', nome: 'Microfone Shure SM58', categoria_id: 1, marca: 'Shure', modelo: 'SM58', deposito_id: 1 },
-    { codigo: 'MIC-003', nome: 'Microfone Sennheiser E835', categoria_id: 1, marca: 'Sennheiser', modelo: 'E835', deposito_id: 1 },
-    { codigo: 'MICW-001', nome: 'Microfone Wireless Shure', categoria_id: 2, marca: 'Shure', modelo: 'BLX24', deposito_id: 1 },
-    { codigo: 'MICW-002', nome: 'Microfone Wireless Sennheiser', categoria_id: 2, marca: 'Sennheiser', modelo: 'EW 135', deposito_id: 2 },
+    { codigo: 'MIC-001', tombamento: 'TOMB-2025-000001', nome: 'Microfone Shure SM58', categoria_id: 1, marca: 'Shure', modelo: 'SM58', deposito_id: 1 },
+    { codigo: 'MIC-002', tombamento: 'TOMB-2025-000002', nome: 'Microfone Shure SM58', categoria_id: 1, marca: 'Shure', modelo: 'SM58', deposito_id: 1 },
+    { codigo: 'MIC-003', tombamento: 'TOMB-2025-000003', nome: 'Microfone Sennheiser E835', categoria_id: 1, marca: 'Sennheiser', modelo: 'E835', deposito_id: 1 },
+    { codigo: 'MICW-001', tombamento: 'TOMB-2025-000004', nome: 'Microfone Wireless Shure', categoria_id: 2, marca: 'Shure', modelo: 'BLX24', deposito_id: 1 },
+    { codigo: 'MICW-002', tombamento: 'TOMB-2025-000005', nome: 'Microfone Wireless Sennheiser', categoria_id: 2, marca: 'Sennheiser', modelo: 'EW 135', deposito_id: 2 },
 
     // Caixas de Som
-    { codigo: 'CX-001', nome: 'Caixa JBL PRX815', categoria_id: 3, marca: 'JBL', modelo: 'PRX815', deposito_id: 1 },
-    { codigo: 'CX-002', nome: 'Caixa JBL PRX815', categoria_id: 3, marca: 'JBL', modelo: 'PRX815', deposito_id: 1 },
-    { codigo: 'CX-003', nome: 'Caixa QSC K12.2', categoria_id: 3, marca: 'QSC', modelo: 'K12.2', deposito_id: 2 },
-    { codigo: 'CX-004', nome: 'Caixa QSC K12.2', categoria_id: 3, marca: 'QSC', modelo: 'K12.2', deposito_id: 2 },
+    { codigo: 'CX-001', tombamento: 'TOMB-2025-000006', nome: 'Caixa JBL PRX815', categoria_id: 3, marca: 'JBL', modelo: 'PRX815', deposito_id: 1 },
+    { codigo: 'CX-002', tombamento: 'TOMB-2025-000007', nome: 'Caixa JBL PRX815', categoria_id: 3, marca: 'JBL', modelo: 'PRX815', deposito_id: 1 },
+    { codigo: 'CX-003', tombamento: 'TOMB-2025-000008', nome: 'Caixa QSC K12.2', categoria_id: 3, marca: 'QSC', modelo: 'K12.2', deposito_id: 2 },
+    { codigo: 'CX-004', tombamento: 'TOMB-2025-000009', nome: 'Caixa QSC K12.2', categoria_id: 3, marca: 'QSC', modelo: 'K12.2', deposito_id: 2 },
 
     // Mesas de Som
-    { codigo: 'MESA-001', nome: 'Mesa Behringer X32', categoria_id: 4, marca: 'Behringer', modelo: 'X32', deposito_id: 1 },
-    { codigo: 'MESA-002', nome: 'Mesa Yamaha MG16XU', categoria_id: 4, marca: 'Yamaha', modelo: 'MG16XU', deposito_id: 2 },
+    { codigo: 'MESA-001', tombamento: 'TOMB-2025-000010', nome: 'Mesa Behringer X32', categoria_id: 4, marca: 'Behringer', modelo: 'X32', deposito_id: 1 },
+    { codigo: 'MESA-002', tombamento: 'TOMB-2025-000011', nome: 'Mesa Yamaha MG16XU', categoria_id: 4, marca: 'Yamaha', modelo: 'MG16XU', deposito_id: 2 },
 
     // Iluminação
-    { codigo: 'LED-001', nome: 'Refletor LED RGB 200W', categoria_id: 5, marca: 'Cromus', modelo: 'RGBW-200', deposito_id: 1 },
-    { codigo: 'LED-002', nome: 'Refletor LED RGB 200W', categoria_id: 5, marca: 'Cromus', modelo: 'RGBW-200', deposito_id: 1 },
-    { codigo: 'MH-001', nome: 'Moving Head Beam', categoria_id: 6, marca: 'Blizzard', modelo: 'Blade RGBW', deposito_id: 1, condicao: 'regular', observacoes: 'Motor com ruído estranho' },
-    { codigo: 'PAR-001', nome: 'Par LED 54x3W', categoria_id: 7, marca: 'Generic', modelo: 'PAR54', deposito_id: 1 }
+    { codigo: 'LED-001', tombamento: 'TOMB-2025-000012', nome: 'Refletor LED RGB 200W', categoria_id: 5, marca: 'Cromus', modelo: 'RGBW-200', deposito_id: 1 },
+    { codigo: 'LED-002', tombamento: 'TOMB-2025-000013', nome: 'Refletor LED RGB 200W', categoria_id: 5, marca: 'Cromus', modelo: 'RGBW-200', deposito_id: 1 },
+    { codigo: 'MH-001', tombamento: 'TOMB-2025-000014', nome: 'Moving Head Beam', categoria_id: 6, marca: 'Blizzard', modelo: 'Blade RGBW', deposito_id: 1, condicao: 'regular', observacoes: 'Motor com ruído estranho' },
+    { codigo: 'PAR-001', tombamento: 'TOMB-2025-000015', nome: 'Par LED 54x3W', categoria_id: 7, marca: 'Generic', modelo: 'PAR54', deposito_id: 1 }
   ];
 
   for (const eq of equipamentos) {
     await runAsync(`
-      INSERT INTO equipamentos (codigo, nome, categoria_id, marca, modelo, deposito_id, condicao, observacoes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [eq.codigo, eq.nome, eq.categoria_id, eq.marca, eq.modelo, eq.deposito_id, eq.condicao || 'bom', eq.observacoes || null]);
+      INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, deposito_id, condicao, observacoes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [eq.codigo, eq.tombamento, eq.nome, eq.categoria_id, eq.marca, eq.modelo, eq.deposito_id, eq.condicao || 'bom', eq.observacoes || null]);
   }
 
   // Adicionar um problema no Moving Head
@@ -166,5 +173,6 @@ module.exports = {
   initializeDatabase,
   runAsync,
   getAsync,
-  allAsync
+  allAsync,
+  gerarTombamento
 };

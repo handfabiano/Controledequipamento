@@ -47,11 +47,14 @@ export const auth = {
 export const equipamentos = {
   listar: (params) => api.get('/equipamentos', { params }),
   buscarPorId: (id) => api.get(`/equipamentos/${id}`),
+  buscarPorTombamento: (tombamento) => api.get(`/equipamentos/tombamento/${tombamento}`),
   criar: (data) => api.post('/equipamentos', data),
   atualizar: (id, data) => api.put(`/equipamentos/${id}`, data),
   reportarProblema: (id, data) => api.post(`/equipamentos/${id}/problemas`, data),
   resolverProblema: (id, problemaId) => api.put(`/equipamentos/${id}/problemas/${problemaId}/resolver`),
   listarCategorias: () => api.get('/equipamentos/categorias'),
+  gerarQRCode: (id) => api.get(`/equipamentos/${id}/qrcode`),
+  gerarEtiqueta: (id) => `${API_URL}/equipamentos/${id}/etiqueta`,
 };
 
 // Transferências
@@ -62,6 +65,7 @@ export const transferencias = {
   aprovar: (id, tipo_aprovacao) => api.post(`/transferencias/${id}/aprovar`, { tipo_aprovacao }),
   cancelar: (id, motivo) => api.post(`/transferencias/${id}/cancelar`, { motivo }),
   transferirRapida: (data) => api.post('/transferencias/rapida', data),
+  transferirEntreEventos: (data) => api.post('/transferencias/entre-eventos', data),
 };
 
 // Eventos

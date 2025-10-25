@@ -326,6 +326,120 @@ const transferenciasController = {
       console.error('Erro ao transferir entre responsáveis:', error);
       res.status(500).json({ error: 'Erro ao transferir equipamento' });
     }
+  },
+
+  // Transferência entre eventos simultâneos
+  async transferirEntreEventos(req, res) {
+    try {
+      const {
+        equipamento_id,
+        evento_origem_id,
+        evento_destino_id,
+        responsavel_entrega_id,
+        responsavel_recebimento_id,
+        coordenador_id,
+        motivo,
+        observacoes
+      } = req.body;
+
+      if (!equipamento_id || !evento_origem_id || !evento_destino_id) {
+        return res.status(400).json({ error: 'Equipamento e eventos de origem/destino são obrigatórios' });
+      }
+
+      // Verificar se equipamento está no evento de origem
+      const equipamentoEventoOrigem = await getAsync(
+        'SELECT * FROM equipamentos_evento WHERE equipamento_id = ? AND evento_id = ?',
+        [equipamento_id, evento_origem_id]
+      );
+
+      if (!equipamentoEventoOrigem) {
+        return res.status(404).json({ error: 'Equipamento não encontrado no evento de origem' });
+      }
+
+      // Verificar se ambos os eventos existem e estão em andamento ou aprovados
+      const eventoOrigem = await getAsync(
+        'SELECT * FROM eventos WHERE id = ? AND status IN (?, ?)',
+        [evento_origem_id, 'em_andamento', 'aprovado']
+      );
+
+      const eventoDestino = await getAsync(
+        'SELECT * FROM eventos WHERE id = ? AND status IN (?, ?)',
+        [evento_destino_id, 'em_andamento', 'aprovado']
+      );
+
+      if (!eventoOrigem || !eventoDestino) {
+        return res.status(400).json({ error: 'Os eventos precisam estar aprovados ou em andamento' });
+      }
+
+      // Verificar se os eventos são simultâneos (se há sobreposição de datas)
+      const dataInicioOrigem = new Date(eventoOrigem.data_inicio);
+      const dataFimOrigem = new Date(eventoOrigem.data_fim);
+      const dataInicioDestino = new Date(eventoDestino.data_inicio);
+      const dataFimDestino = new Date(eventoDestino.data_fim);
+
+      const eventosSimultaneos = (
+        (dataInicioDestino >= dataInicioOrigem && dataInicioDestino <= dataFimOrigem) ||
+        (dataFimDestino >= dataInicioOrigem && dataFimDestino <= dataFimOrigem) ||
+        (dataInicioDestino <= dataInicioOrigem && dataFimDestino >= dataFimOrigem)
+      );
+
+      if (!eventosSimultaneos) {
+        return res.status(400).json({
+          error: 'Os eventos não são simultâneos',
+          mensagem: 'Esta transferência é específica para eventos que ocorrem ao mesmo tempo em locais diferentes'
+        });
+      }
+
+      // Criar transferência com aprovação tripla
+      db.run(
+        `INSERT INTO transferencias
+         (equipamento_id, origem_tipo, origem_id, destino_tipo, destino_id,
+          solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
+          coordenador_id, motivo, observacoes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [equipamento_id, 'evento', evento_origem_id, 'evento', evento_destino_id,
+         req.user.id, responsavel_entrega_id || null, responsavel_recebimento_id || null,
+         coordenador_id || null, motivo || 'Transferência urgente entre eventos simultâneos', observacoes || null],
+        async function(err) {
+          if (err) {
+            console.error('Erro ao criar transferência entre eventos:', err);
+            return res.status(500).json({ error: 'Erro ao criar transferência' });
+          }
+
+          // Atualizar status do equipamento
+          await runAsync(
+            'UPDATE equipamentos SET status = ? WHERE id = ?',
+            ['transferencia', equipamento_id]
+          );
+
+          // Adicionar observação sobre transferência urgente
+          await runAsync(
+            `INSERT INTO historico_movimentacoes
+             (equipamento_id, tipo_movimentacao, origem, destino, usuario_id, observacoes)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [equipamento_id,
+             'transferencia_urgente',
+             `Evento: ${eventoOrigem.nome}`,
+             `Evento: ${eventoDestino.nome}`,
+             req.user.id,
+             'Transferência entre eventos simultâneos']
+          );
+
+          res.status(201).json({
+            message: 'Transferência entre eventos criada com sucesso',
+            id: this.lastID,
+            info: {
+              evento_origem: eventoOrigem.nome,
+              evento_destino: eventoDestino.nome,
+              requer_aprovacoes: true
+            }
+          });
+        }
+      );
+    } catch (error) {
+      console.error('Erro ao transferir entre eventos:', error);
+      res.status(500).json({ error: 'Erro ao criar transferência entre eventos' });
+    }
   }
 };
 

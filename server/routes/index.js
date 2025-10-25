@@ -16,7 +16,10 @@ router.get('/auth/me', authMiddleware, authController.me);
 // Rotas de equipamentos
 router.get('/equipamentos', authMiddleware, equipamentosController.listar);
 router.get('/equipamentos/categorias', authMiddleware, equipamentosController.listarCategorias);
+router.get('/equipamentos/tombamento/:tombamento', authMiddleware, equipamentosController.buscarPorTombamento);
 router.get('/equipamentos/:id', authMiddleware, equipamentosController.buscarPorId);
+router.get('/equipamentos/:id/qrcode', authMiddleware, equipamentosController.gerarQRCode);
+router.get('/equipamentos/:id/etiqueta', authMiddleware, equipamentosController.gerarEtiqueta);
 router.post('/equipamentos', authMiddleware, equipamentosController.criar);
 router.put('/equipamentos/:id', authMiddleware, equipamentosController.atualizar);
 router.post('/equipamentos/:id/problemas', authMiddleware, equipamentosController.reportarProblema);
@@ -29,6 +32,7 @@ router.post('/transferencias', authMiddleware, transferenciasController.criar);
 router.post('/transferencias/:id/aprovar', authMiddleware, transferenciasController.aprovar);
 router.post('/transferencias/:id/cancelar', authMiddleware, transferenciasController.cancelar);
 router.post('/transferencias/rapida', authMiddleware, transferenciasController.transferirEntreResponsaveis);
+router.post('/transferencias/entre-eventos', authMiddleware, transferenciasController.transferirEntreEventos);
 
 // Rotas de eventos
 router.get('/eventos', authMiddleware, eventosController.listar);

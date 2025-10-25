@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS categorias_equipamentos (
 CREATE TABLE IF NOT EXISTS equipamentos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     codigo TEXT UNIQUE NOT NULL,
+    tombamento TEXT UNIQUE NOT NULL,
     nome TEXT NOT NULL,
     categoria_id INTEGER NOT NULL,
     marca TEXT,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS equipamentos (
     status TEXT NOT NULL DEFAULT 'disponivel' CHECK(status IN ('disponivel', 'em_uso', 'manutencao', 'com_problema', 'transferencia')),
     condicao TEXT DEFAULT 'bom' CHECK(condicao IN ('excelente', 'bom', 'regular', 'ruim', 'quebrado')),
     observacoes TEXT,
+    qrcode_gerado INTEGER DEFAULT 0,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
     atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (categoria_id) REFERENCES categorias_equipamentos(id),
@@ -169,6 +171,7 @@ CREATE TABLE IF NOT EXISTS historico_movimentacoes (
 -- Índices para melhorar performance
 CREATE INDEX IF NOT EXISTS idx_equipamentos_status ON equipamentos(status);
 CREATE INDEX IF NOT EXISTS idx_equipamentos_deposito ON equipamentos(deposito_id);
+CREATE INDEX IF NOT EXISTS idx_equipamentos_tombamento ON equipamentos(tombamento);
 CREATE INDEX IF NOT EXISTS idx_transferencias_status ON transferencias(status);
 CREATE INDEX IF NOT EXISTS idx_eventos_status ON eventos(status);
 CREATE INDEX IF NOT EXISTS idx_eventos_data ON eventos(data_inicio, data_fim);
