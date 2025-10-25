@@ -1,4 +1,5 @@
 const { db, getAsync, allAsync, runAsync } = require('../database/init');
+const cache = require('../cache');
 
 const eventosController = {
   // Listar eventos
@@ -301,19 +302,30 @@ const eventosController = {
   // Listar templates
   async listarTemplates(req, res) {
     try {
-      const templates = await allAsync('SELECT * FROM templates_eventos ORDER BY tamanho');
+      const cacheKey = 'templates:all';
 
-      // Para cada template, buscar o checklist
-      for (const template of templates) {
-        const checklist = await allAsync(`
-          SELECT ct.*, c.nome as categoria_nome, c.tipo as categoria_tipo
-          FROM checklist_template ct
-          LEFT JOIN categorias_equipamentos c ON ct.categoria_id = c.id
-          WHERE ct.template_id = ?
-          ORDER BY c.tipo, c.nome
-        `, [template.id]);
+      // Tentar buscar do cache
+      let templates = cache.get(cacheKey);
 
-        template.checklist = checklist;
+      if (!templates) {
+        // Buscar do banco
+        templates = await allAsync('SELECT * FROM templates_eventos ORDER BY tamanho');
+
+        // Para cada template, buscar o checklist
+        for (const template of templates) {
+          const checklist = await allAsync(`
+            SELECT ct.*, c.nome as categoria_nome, c.tipo as categoria_tipo
+            FROM checklist_template ct
+            LEFT JOIN categorias_equipamentos c ON ct.categoria_id = c.id
+            WHERE ct.template_id = ?
+            ORDER BY c.tipo, c.nome
+          `, [template.id]);
+
+          template.checklist = checklist;
+        }
+
+        // Salvar no cache por 24 horas (86400 segundos)
+        cache.set(cacheKey, templates, 86400);
       }
 
       res.json(templates);

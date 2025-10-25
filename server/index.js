@@ -4,6 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
+const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +19,9 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// Rate limiting
+app.use('/api', apiLimiter);
 
 // Rotas
 app.use('/api', routes);

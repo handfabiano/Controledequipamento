@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { equipamentos } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 import './Equipamentos.css';
 
 function Equipamentos() {
@@ -9,6 +10,14 @@ function Equipamentos() {
   const [showModal, setShowModal] = useState(false);
   const [showProblemaModal, setShowProblemaModal] = useState(false);
   const [selectedEquipamento, setSelectedEquipamento] = useState(null);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrev: false
+  });
   const [filters, setFilters] = useState({
     status: '',
     categoria_id: '',
@@ -34,17 +43,31 @@ function Equipamentos() {
 
   useEffect(() => {
     loadData();
-  }, [filters]);
+  }, [filters, pagination.page]);
 
   const loadData = async () => {
     try {
       setLoading(true);
+      const params = {
+        ...filters,
+        page: pagination.page,
+        limit: pagination.limit
+      };
+
       const [equipResponse, categoriasResponse] = await Promise.all([
-        equipamentos.listar(filters),
+        equipamentos.listar(params),
         equipamentos.listarCategorias(),
       ]);
 
-      setEquipamentosList(equipResponse.data);
+      // Handle new pagination response format
+      if (equipResponse.data.data) {
+        setEquipamentosList(equipResponse.data.data);
+        setPagination(equipResponse.data.pagination);
+      } else {
+        // Fallback for backward compatibility
+        setEquipamentosList(equipResponse.data);
+      }
+
       setCategorias(categoriasResponse.data);
     } catch (error) {
       console.error('Erro ao carregar equipamentos:', error);
@@ -52,6 +75,11 @@ function Equipamentos() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setPagination({ ...pagination, page: newPage });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSubmit = async (e) => {
@@ -121,7 +149,7 @@ function Equipamentos() {
   };
 
   if (loading && equipamentosList.length === 0) {
-    return <div className="loading">Carregando equipamentos...</div>;
+    return <LoadingSpinner size="large" message="Carregando equipamentos..." />;
   }
 
   return (
@@ -236,6 +264,36 @@ function Equipamentos() {
           <p className="empty-state">Nenhum equipamento encontrado</p>
         )}
       </div>
+
+      {/* Paginação */}
+      {pagination.totalPages > 1 && (
+        <div className="pagination">
+          <button
+            className="btn btn-secondary"
+            disabled={!pagination.hasPrev}
+            onClick={() => handlePageChange(pagination.page - 1)}
+          >
+            ← Anterior
+          </button>
+
+          <div className="pagination-info">
+            <span>
+              Página {pagination.page} de {pagination.totalPages}
+            </span>
+            <span className="text-muted">
+              ({pagination.total} equipamentos)
+            </span>
+          </div>
+
+          <button
+            className="btn btn-secondary"
+            disabled={!pagination.hasNext}
+            onClick={() => handlePageChange(pagination.page + 1)}
+          >
+            Próxima →
+          </button>
+        </div>
+      )}
 
       {/* Modal de Novo Equipamento */}
       {showModal && (

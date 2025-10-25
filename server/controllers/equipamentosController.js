@@ -1,11 +1,21 @@
 const { db, getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
+const cache = require('../cache');
 
 const equipamentosController = {
   // Listar todos os equipamentos com filtros
   async listar(req, res) {
     try {
-      const { status, categoria_id, deposito_id, search } = req.query;
+      const {
+        status,
+        categoria_id,
+        deposito_id,
+        search,
+        page = 1,
+        limit = 50
+      } = req.query;
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
 
       let query = `
         SELECT e.*, c.nome as categoria_nome, c.tipo as categoria_tipo,
@@ -16,43 +26,87 @@ const equipamentosController = {
         WHERE 1=1
       `;
 
+      let countQuery = `SELECT COUNT(*) as total FROM equipamentos e WHERE 1=1`;
+
       const params = [];
+      const countParams = [];
 
       if (status) {
         query += ' AND e.status = ?';
+        countQuery += ' AND e.status = ?';
         params.push(status);
+        countParams.push(status);
       }
 
       if (categoria_id) {
         query += ' AND e.categoria_id = ?';
+        countQuery += ' AND e.categoria_id = ?';
         params.push(categoria_id);
+        countParams.push(categoria_id);
       }
 
       if (deposito_id) {
         query += ' AND e.deposito_id = ?';
+        countQuery += ' AND e.deposito_id = ?';
         params.push(deposito_id);
+        countParams.push(deposito_id);
       }
 
       if (search) {
-        query += ' AND (e.codigo LIKE ? OR e.tombamento LIKE ? OR e.nome LIKE ? OR e.marca LIKE ? OR e.modelo LIKE ?)';
+        const searchClause = ' AND (e.codigo LIKE ? OR e.tombamento LIKE ? OR e.nome LIKE ? OR e.marca LIKE ? OR e.modelo LIKE ?)';
+        query += searchClause;
+        countQuery += searchClause;
         const searchParam = `%${search}%`;
         params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
+        countParams.push(searchParam, searchParam, searchParam, searchParam, searchParam);
       }
 
-      query += ' ORDER BY e.codigo';
+      query += ' ORDER BY e.codigo LIMIT ? OFFSET ?';
+      params.push(parseInt(limit), offset);
 
-      const equipamentos = await allAsync(query, params);
+      const [equipamentos, totalResult] = await Promise.all([
+        allAsync(query, params),
+        getAsync(countQuery, countParams)
+      ]);
 
       // Buscar problemas não resolvidos para cada equipamento
-      for (let eq of equipamentos) {
+      if (equipamentos.length > 0) {
+        const ids = equipamentos.map(e => e.id);
+        const placeholders = ids.map(() => '?').join(',');
+
         const problemas = await allAsync(
-          'SELECT * FROM problemas_equipamentos WHERE equipamento_id = ? AND resolvido = 0 ORDER BY data_relato DESC',
-          [eq.id]
+          `SELECT * FROM problemas_equipamentos
+           WHERE equipamento_id IN (${placeholders}) AND resolvido = 0
+           ORDER BY data_relato DESC`,
+          ids
         );
-        eq.problemas_ativos = problemas;
+
+        // Agrupar problemas por equipamento_id
+        const problemasMap = {};
+        problemas.forEach(p => {
+          if (!problemasMap[p.equipamento_id]) {
+            problemasMap[p.equipamento_id] = [];
+          }
+          problemasMap[p.equipamento_id].push(p);
+        });
+
+        // Adicionar aos equipamentos
+        equipamentos.forEach(eq => {
+          eq.problemas_ativos = problemasMap[eq.id] || [];
+        });
       }
 
-      res.json(equipamentos);
+      res.json({
+        data: equipamentos,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: totalResult.total,
+          totalPages: Math.ceil(totalResult.total / parseInt(limit)),
+          hasNext: offset + equipamentos.length < totalResult.total,
+          hasPrev: parseInt(page) > 1
+        }
+      });
     } catch (error) {
       console.error('Erro ao listar equipamentos:', error);
       res.status(500).json({ error: 'Erro ao listar equipamentos' });
@@ -314,7 +368,19 @@ const equipamentosController = {
   // Listar categorias
   async listarCategorias(req, res) {
     try {
-      const categorias = await allAsync('SELECT * FROM categorias_equipamentos ORDER BY tipo, nome');
+      const cacheKey = 'categorias:all';
+
+      // Tentar buscar do cache
+      let categorias = cache.get(cacheKey);
+
+      if (!categorias) {
+        // Buscar do banco
+        categorias = await allAsync('SELECT * FROM categorias_equipamentos ORDER BY tipo, nome');
+
+        // Salvar no cache por 24 horas (86400 segundos)
+        cache.set(cacheKey, categorias, 86400);
+      }
+
       res.json(categorias);
     } catch (error) {
       console.error('Erro ao listar categorias:', error);

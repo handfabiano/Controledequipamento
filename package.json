@@ -10,21 +10,29 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run client\"",
     "install:all": "npm install && cd client && npm install"
   },
-  "keywords": ["equipamentos", "som", "iluminação", "eventos"],
+  "keywords": [
+    "equipamentos",
+    "som",
+    "iluminação",
+    "eventos"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "sqlite3": "^5.1.6",
-    "dotenv": "^16.3.1",
     "body-parser": "^1.20.2",
-    "qrcode": "^1.5.3"
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.1.0",
+    "express-validator": "^7.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-cache": "^5.1.2",
+    "qrcode": "^1.5.3",
+    "sqlite3": "^5.1.6"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "concurrently": "^8.2.1"
+    "concurrently": "^8.2.1",
+    "nodemon": "^3.0.1"
   }
 }
