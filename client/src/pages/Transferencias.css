@@ -1,0 +1,66 @@
+.transferencias-page {
+  width: 100%;
+}
+
+.info-box {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-left: 4px solid #2196f3;
+  margin-bottom: 20px;
+}
+
+.info-box h3 {
+  color: #1976d2;
+  margin-bottom: 10px;
+}
+
+.info-box ol {
+  margin: 10px 0 0 20px;
+  color: #0d47a1;
+}
+
+.info-box ol li {
+  margin: 5px 0;
+}
+
+.aprovacoes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.aprovacoes .aprovado {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.aprovacoes .pendente {
+  color: #999;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.action-buttons .btn {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 768px) {
+  .table {
+    font-size: 11px;
+  }
+
+  .table th,
+  .table td {
+    padding: 6px;
+  }
+
+  .action-buttons .btn {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+}
