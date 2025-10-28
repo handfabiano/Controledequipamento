@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { equipamentos } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import './Equipamentos.css';
@@ -41,11 +41,7 @@ function Equipamentos() {
     gravidade: 'media',
   });
 
-  useEffect(() => {
-    loadData();
-  }, [filters, pagination.page]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const params = {
@@ -75,7 +71,11 @@ function Equipamentos() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, pagination.page, pagination.limit]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handlePageChange = (newPage) => {
     setPagination({ ...pagination, page: newPage });

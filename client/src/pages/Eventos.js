@@ -53,7 +53,7 @@ function Eventos() {
     e.preventDefault();
 
     try {
-      const response = await eventos.criar(formData);
+      await eventos.criar(formData);
       alert('Evento criado com sucesso!');
       setShowModal(false);
       resetForm();
