@@ -30,9 +30,10 @@ function Dashboard() {
         eventos.listar({ status: 'em_andamento' }),
       ]);
 
-      const equips = equipResponse.data;
-      const transferList = transferenciaResponse.data;
-      const eventosList = eventoResponse.data;
+      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
+      const equips = equipResponse.data.data || equipResponse.data;
+      const transferList = transferenciaResponse.data.data || transferenciaResponse.data;
+      const eventosList = eventoResponse.data.data || eventoResponse.data;
 
       setStats({
         totalEquipamentos: equips.length,

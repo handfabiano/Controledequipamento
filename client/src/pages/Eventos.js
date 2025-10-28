@@ -37,9 +37,10 @@ function Eventos() {
         equipamentosAPI.listar(),
       ]);
 
-      setEventosList(eventosResponse.data);
-      setTemplates(templatesResponse.data);
-      setEquipamentosList(equipamentosResponse.data);
+      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
+      setEventosList(eventosResponse.data.data || eventosResponse.data);
+      setTemplates(templatesResponse.data.data || templatesResponse.data);
+      setEquipamentosList(equipamentosResponse.data.data || equipamentosResponse.data);
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
       alert('Erro ao carregar eventos');
