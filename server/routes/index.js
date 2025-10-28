@@ -31,12 +31,14 @@ router.put('/equipamentos/:id/problemas/:problemaId/resolver', authMiddleware, e
 
 // Rotas de transferências
 router.get('/transferencias', authMiddleware, transferenciasController.listar);
-router.get('/transferencias/:id', authMiddleware, transferenciasController.buscarPorId);
 router.post('/transferencias', authMiddleware, transferenciasController.criar);
-router.post('/transferencias/:id/aprovar', authMiddleware, transferenciasController.aprovar);
-router.post('/transferencias/:id/cancelar', authMiddleware, transferenciasController.cancelar);
+// Rotas específicas devem vir ANTES das rotas parametrizadas
 router.post('/transferencias/rapida', authMiddleware, transferenciasController.transferirEntreResponsaveis);
 router.post('/transferencias/entre-eventos', authMiddleware, transferenciasController.transferirEntreEventos);
+// Rotas parametrizadas por último
+router.get('/transferencias/:id', authMiddleware, transferenciasController.buscarPorId);
+router.post('/transferencias/:id/aprovar', authMiddleware, transferenciasController.aprovar);
+router.post('/transferencias/:id/cancelar', authMiddleware, transferenciasController.cancelar);
 
 // Rotas de eventos
 router.get('/eventos', authMiddleware, eventosController.listar);

@@ -32,8 +32,9 @@ function Transferencias() {
         equipamentos.listar(),
       ]);
 
-      setTransferenciasList(transferResponse.data);
-      setEquipamentosList(equipResponse.data);
+      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
+      setTransferenciasList(transferResponse.data.data || transferResponse.data);
+      setEquipamentosList(equipResponse.data.data || equipResponse.data);
     } catch (error) {
       console.error('Erro ao carregar transferências:', error);
       alert('Erro ao carregar transferências');
