@@ -9,6 +9,18 @@ const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Inicializar banco de dados (necessário para ambos os ambientes)
+let dbInitialized = false;
+
+async function ensureDatabase() {
+  if (!dbInitialized) {
+    console.log('Inicializando banco de dados...');
+    await initializeDatabase();
+    console.log('Banco de dados inicializado com sucesso!');
+    dbInitialized = true;
+  }
+}
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -18,6 +30,17 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
+});
+
+// Middleware para garantir que o banco está inicializado ANTES de processar requisições
+app.use(async (req, res, next) => {
+  try {
+    await ensureDatabase();
+    next();
+  } catch (error) {
+    console.error('Erro ao inicializar banco:', error);
+    res.status(500).json({ error: 'Erro ao inicializar banco de dados' });
+  }
 });
 
 // Rate limiting
@@ -46,12 +69,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-// Inicializar banco de dados e servidor
+// Inicializar servidor local (não executado em ambiente serverless)
 async function start() {
   try {
-    console.log('Inicializando banco de dados...');
-    await initializeDatabase();
-    console.log('Banco de dados inicializado com sucesso!');
+    await ensureDatabase();
 
     app.listen(PORT, () => {
       console.log(`
@@ -76,4 +97,10 @@ async function start() {
   }
 }
 
-start();
+// Iniciar servidor apenas se não estiver em ambiente Vercel
+if (require.main === module) {
+  start();
+}
+
+// Exportar app para Vercel
+module.exports = app;
