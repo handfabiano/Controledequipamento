@@ -1,4 +1,4 @@
-const { db, getAsync, allAsync, runAsync } = require('../database/init');
+const { getAsync, allAsync, runAsync } = require('../database/init');
 const cache = require('../cache');
 
 const eventosController = {
@@ -100,34 +100,28 @@ const eventosController = {
         return res.status(400).json({ error: 'Nome, local e datas são obrigatórios' });
       }
 
-      db.run(
+      const result = await runAsync(
         `INSERT INTO eventos (nome, local, template_id, data_inicio, data_fim, observacoes, criado_por)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [nome, local, template_id || null, data_inicio, data_fim, observacoes || null, req.user.id],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao criar evento:', err);
-            return res.status(500).json({ error: 'Erro ao criar evento' });
-          }
-
-          const eventoId = this.lastID;
-
-          // Adicionar responsáveis se fornecidos
-          if (responsaveis && responsaveis.length > 0) {
-            for (const resp of responsaveis) {
-              await runAsync(
-                'INSERT INTO responsaveis_evento (evento_id, usuario_id, area, tipo) VALUES (?, ?, ?, ?)',
-                [eventoId, resp.usuario_id, resp.area, resp.tipo]
-              );
-            }
-          }
-
-          res.status(201).json({
-            message: 'Evento criado com sucesso',
-            id: eventoId
-          });
-        }
+        [nome, local, template_id || null, data_inicio, data_fim, observacoes || null, req.user.id]
       );
+
+      const eventoId = result.lastID;
+
+      // Adicionar responsáveis se fornecidos
+      if (responsaveis && responsaveis.length > 0) {
+        for (const resp of responsaveis) {
+          await runAsync(
+            'INSERT INTO responsaveis_evento (evento_id, usuario_id, area, tipo) VALUES (?, ?, ?, ?)',
+            [eventoId, resp.usuario_id, resp.area, resp.tipo]
+          );
+        }
+      }
+
+      res.status(201).json({
+        message: 'Evento criado com sucesso',
+        id: eventoId
+      });
     } catch (error) {
       console.error('Erro ao criar evento:', error);
       res.status(500).json({ error: 'Erro ao criar evento' });

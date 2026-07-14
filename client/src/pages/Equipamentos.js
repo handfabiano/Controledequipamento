@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { equipamentos } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import QRScanner from '../components/QRScanner';
 import './Equipamentos.css';
 
 function Equipamentos() {
@@ -9,6 +10,7 @@ function Equipamentos() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showProblemaModal, setShowProblemaModal] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [selectedEquipamento, setSelectedEquipamento] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -76,6 +78,29 @@ function Equipamentos() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleScan = useCallback(async (decodedText) => {
+    setShowScanner(false);
+
+    try {
+      // A etiqueta guarda o tombamento (TOMB-AAAA-NNNNNN)
+      const response = await equipamentos.buscarPorTombamento(decodedText.trim());
+      const eq = response.data;
+      // Filtrar a lista pelo código encontrado para exibir o equipamento
+      setPagination((prev) => ({ ...prev, page: 1 }));
+      setFilters({ status: '', categoria_id: '', search: eq.codigo });
+      alert(`Equipamento encontrado: ${eq.codigo} - ${eq.nome}`);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        // Pode ser um QR com o próprio código do equipamento — usar como busca
+        setPagination((prev) => ({ ...prev, page: 1 }));
+        setFilters({ status: '', categoria_id: '', search: decodedText.trim() });
+      } else {
+        console.error('Erro ao buscar equipamento escaneado:', error);
+        alert('Erro ao buscar equipamento escaneado');
+      }
+    }
+  }, []);
 
   const handlePageChange = (newPage) => {
     setPagination({ ...pagination, page: newPage });
@@ -156,9 +181,14 @@ function Equipamentos() {
     <div className="equipamentos-page">
       <div className="page-header">
         <h1>Gestão de Equipamentos</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          + Novo Equipamento
-        </button>
+        <div className="page-header-actions">
+          <button className="btn btn-secondary" onClick={() => setShowScanner(true)}>
+            📷 Escanear QR
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            + Novo Equipamento
+          </button>
+        </div>
       </div>
 
       <div className="filters card">
@@ -293,6 +323,11 @@ function Equipamentos() {
             Próxima →
           </button>
         </div>
+      )}
+
+      {/* Scanner de QR Code */}
+      {showScanner && (
+        <QRScanner onScan={handleScan} onClose={() => setShowScanner(false)} />
       )}
 
       {/* Modal de Novo Equipamento */}

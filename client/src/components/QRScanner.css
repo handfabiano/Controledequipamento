@@ -1,0 +1,22 @@
+.qr-scanner-modal {
+  max-width: 420px;
+}
+
+.qr-scanner-hint {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 8px 0;
+}
+
+.qr-reader-region {
+  width: 100%;
+  min-height: 260px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.qr-reader-region video {
+  width: 100% !important;
+  border-radius: 8px;
+}

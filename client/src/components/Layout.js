@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 import './Layout.css';
 
 function Layout() {
@@ -36,6 +37,7 @@ function Layout() {
           </Link>
         </div>
         <div className="navbar-user">
+          <NotificationBell />
           <span>{user?.nome}</span>
           <span className="badge badge-info">{user?.tipo?.replace('_', ' ')}</span>
           <button onClick={handleLogout} className="btn btn-secondary btn-sm">

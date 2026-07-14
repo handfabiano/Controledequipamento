@@ -1,45 +1,20 @@
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const { usePostgres, runAsync, getAsync, allAsync } = require('./db');
 
-const dbPath = path.join(__dirname, 'equipamentos.db');
-const db = new sqlite3.Database(dbPath);
-
-// Função para executar SQL de forma síncrona
-const runAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-};
-
-const getAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-};
-
-const allAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-};
+// Seed de demonstração: ativo por padrão fora de produção,
+// ou quando SEED_DEMO_DATA=true for definido explicitamente.
+const seedHabilitado =
+  process.env.SEED_DEMO_DATA === 'true' ||
+  (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA !== 'false');
 
 async function initializeDatabase() {
   try {
-    console.log('Inicializando banco de dados...');
+    console.log(`Inicializando banco de dados (${usePostgres ? 'Postgres' : 'SQLite'})...`);
 
-    // Ler e executar schema
-    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+    const schemaFile = usePostgres ? 'schema.pg.sql' : 'schema.sql';
+    const schema = fs.readFileSync(path.join(__dirname, schemaFile), 'utf8');
     const statements = schema.split(';').filter(stmt => stmt.trim());
 
     for (const statement of statements) {
@@ -50,11 +25,10 @@ async function initializeDatabase() {
 
     console.log('Schema criado com sucesso!');
 
-    // Verificar se já existem dados
     const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
 
-    if (userCount.count === 0) {
-      console.log('Inserindo dados iniciais...');
+    if (userCount.count === 0 && seedHabilitado) {
+      console.log('Inserindo dados iniciais de demonstração...');
       await insertInitialData();
       console.log('Dados iniciais inseridos com sucesso!');
     }
@@ -139,12 +113,12 @@ async function insertInitialData() {
   // Checklists para Evento Médio
   await runAsync(`
     INSERT INTO checklist_template (template_id, categoria_id, quantidade_minima, obrigatorio) VALUES
-    (2, 1, 2, 1),  -- 2 Microfones com Fio (obrigatório)
-    (2, 2, 1, 1),  -- 1 Microfone sem Fio (obrigatório)
-    (2, 3, 4, 1),  -- 4 Caixas de Som (obrigatório)
-    (2, 4, 1, 1),  -- 1 Mesa de Som (obrigatório)
-    (2, 5, 4, 0),  -- 4 Refletores LED (opcional)
-    (2, 7, 8, 0)   -- 8 Par LED (opcional)
+    (2, 1, 2, 1),
+    (2, 2, 1, 1),
+    (2, 3, 4, 1),
+    (2, 4, 1, 1),
+    (2, 5, 4, 0),
+    (2, 7, 8, 0)
   `);
 
   // Equipamentos de exemplo
@@ -179,26 +153,33 @@ async function insertInitialData() {
     { codigo: 'PAR0001', tombamento: 'TOMB-2025-000015', nome: 'Par LED 54x3W', categoria_id: 7, marca: 'Generic', modelo: 'PAR54', deposito_id: 1 }
   ];
 
+  let movingHeadId = null;
   for (const eq of equipamentos) {
-    await runAsync(`
+    const result = await runAsync(`
       INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, deposito_id, condicao, observacoes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [eq.codigo, eq.tombamento, eq.nome, eq.categoria_id, eq.marca, eq.modelo, eq.deposito_id, eq.condicao || 'bom', eq.observacoes || null]);
+
+    if (eq.codigo === 'MOV0001') {
+      movingHeadId = result.lastID;
+    }
   }
 
   // Adicionar um problema no Moving Head
-  await runAsync(`
-    INSERT INTO problemas_equipamentos (equipamento_id, descricao, gravidade, reportado_por)
-    VALUES (13, 'Motor fazendo ruído estranho ao movimentar. Pode falhar durante o evento.', 'media', 4)
-  `);
+  if (movingHeadId) {
+    await runAsync(`
+      INSERT INTO problemas_equipamentos (equipamento_id, descricao, gravidade, reportado_por)
+      VALUES (?, 'Motor fazendo ruído estranho ao movimentar. Pode falhar durante o evento.', 'media', 4)
+    `, [movingHeadId]);
+  }
 }
 
 module.exports = {
-  db,
   initializeDatabase,
   runAsync,
   getAsync,
   allAsync,
   gerarTombamento,
-  gerarCodigo
+  gerarCodigo,
+  usePostgres
 };

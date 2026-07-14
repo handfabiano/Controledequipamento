@@ -79,4 +79,12 @@ export const eventos = {
   listarTemplates: () => api.get('/eventos/templates'),
 };
 
+// Notificações
+export const notificacoes = {
+  listar: (params) => api.get('/notificacoes', { params }),
+  contarNaoLidas: () => api.get('/notificacoes/nao-lidas/count'),
+  marcarLida: (id) => api.put(`/notificacoes/${id}/ler`),
+  marcarTodasLidas: () => api.put('/notificacoes/ler-todas'),
+};
+
 export default api;
