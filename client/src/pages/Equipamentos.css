@@ -15,6 +15,11 @@
   margin: 0;
 }
 
+.page-header-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .filters {
   margin-bottom: 20px;
 }

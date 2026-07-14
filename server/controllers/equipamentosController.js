@@ -1,4 +1,4 @@
-const { db, getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
+const { getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
 const cache = require('../cache');
 
@@ -53,7 +53,7 @@ const equipamentosController = {
       }
 
       if (search) {
-        const searchClause = ' AND (e.codigo LIKE ? OR e.tombamento LIKE ? OR e.nome LIKE ? OR e.marca LIKE ? OR e.modelo LIKE ?)';
+        const searchClause = ' AND (UPPER(e.codigo) LIKE UPPER(?) OR UPPER(e.tombamento) LIKE UPPER(?) OR UPPER(e.nome) LIKE UPPER(?) OR UPPER(e.marca) LIKE UPPER(?) OR UPPER(e.modelo) LIKE UPPER(?))';
         query += searchClause;
         countQuery += searchClause;
         const searchParam = `%${search}%`;
@@ -202,29 +202,23 @@ const equipamentosController = {
         tombamentoExiste = await getAsync('SELECT id FROM equipamentos WHERE tombamento = ?', [tombamento]);
       }
 
-      db.run(
+      const result = await runAsync(
         `INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao || 'bom', observacoes],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao criar equipamento:', err);
-            return res.status(500).json({ error: 'Erro ao criar equipamento' });
-          }
-
-          // Registrar no histórico
-          await runAsync(
-            'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, destino, usuario_id, observacoes) VALUES (?, ?, ?, ?, ?)',
-            [this.lastID, 'criacao', deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito', req.user.id, 'Equipamento criado']
-          );
-
-          res.status(201).json({
-            message: 'Equipamento criado com sucesso',
-            id: this.lastID,
-            codigo: codigo
-          });
-        }
+        [codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao || 'bom', observacoes]
       );
+
+      // Registrar no histórico
+      await runAsync(
+        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, destino, usuario_id, observacoes) VALUES (?, ?, ?, ?, ?)',
+        [result.lastID, 'criacao', deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito', req.user.id, 'Equipamento criado']
+      );
+
+      res.status(201).json({
+        message: 'Equipamento criado com sucesso',
+        id: result.lastID,
+        codigo: codigo
+      });
     } catch (error) {
       console.error('Erro ao criar equipamento:', error);
       res.status(500).json({ error: 'Erro ao criar equipamento' });
@@ -243,7 +237,7 @@ const equipamentosController = {
         return res.status(404).json({ error: 'Equipamento não encontrado' });
       }
 
-      db.run(
+      await runAsync(
         `UPDATE equipamentos
          SET nome = ?, categoria_id = ?, marca = ?, modelo = ?, numero_serie = ?,
              deposito_id = ?, status = ?, condicao = ?, observacoes = ?,
@@ -258,22 +252,16 @@ const equipamentosController = {
          status || equipamento.status,
          condicao || equipamento.condicao,
          observacoes !== undefined ? observacoes : equipamento.observacoes,
-         id],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao atualizar equipamento:', err);
-            return res.status(500).json({ error: 'Erro ao atualizar equipamento' });
-          }
-
-          // Registrar alteração no histórico
-          await runAsync(
-            'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, usuario_id, observacoes) VALUES (?, ?, ?, ?)',
-            [id, 'atualizacao', req.user.id, 'Dados do equipamento atualizados']
-          );
-
-          res.json({ message: 'Equipamento atualizado com sucesso' });
-        }
+         id]
       );
+
+      // Registrar alteração no histórico
+      await runAsync(
+        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, usuario_id, observacoes) VALUES (?, ?, ?, ?)',
+        [id, 'atualizacao', req.user.id, 'Dados do equipamento atualizados']
+      );
+
+      res.json({ message: 'Equipamento atualizado com sucesso' });
     } catch (error) {
       console.error('Erro ao atualizar equipamento:', error);
       res.status(500).json({ error: 'Erro ao atualizar equipamento' });
@@ -296,29 +284,23 @@ const equipamentosController = {
         return res.status(404).json({ error: 'Equipamento não encontrado' });
       }
 
-      db.run(
+      const result = await runAsync(
         'INSERT INTO problemas_equipamentos (equipamento_id, descricao, gravidade, reportado_por) VALUES (?, ?, ?, ?)',
-        [id, descricao, gravidade, req.user.id],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao reportar problema:', err);
-            return res.status(500).json({ error: 'Erro ao reportar problema' });
-          }
-
-          // Atualizar status do equipamento se gravidade for alta ou crítica
-          if (gravidade === 'alta' || gravidade === 'critica') {
-            await runAsync(
-              'UPDATE equipamentos SET status = ?, condicao = ? WHERE id = ?',
-              ['com_problema', gravidade === 'critica' ? 'quebrado' : 'ruim', id]
-            );
-          }
-
-          res.status(201).json({
-            message: 'Problema reportado com sucesso',
-            id: this.lastID
-          });
-        }
+        [id, descricao, gravidade, req.user.id]
       );
+
+      // Atualizar status do equipamento se gravidade for alta ou crítica
+      if (gravidade === 'alta' || gravidade === 'critica') {
+        await runAsync(
+          'UPDATE equipamentos SET status = ?, condicao = ? WHERE id = ?',
+          ['com_problema', gravidade === 'critica' ? 'quebrado' : 'ruim', id]
+        );
+      }
+
+      res.status(201).json({
+        message: 'Problema reportado com sucesso',
+        id: result.lastID
+      });
     } catch (error) {
       console.error('Erro ao reportar problema:', error);
       res.status(500).json({ error: 'Erro ao reportar problema' });

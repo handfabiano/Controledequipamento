@@ -58,7 +58,7 @@ Sistema completo para controle e gestão de equipamentos de som e iluminação p
 ### Backend
 - Node.js
 - Express.js
-- SQLite (banco de dados)
+- PostgreSQL em produção (via `DATABASE_URL`) / SQLite em desenvolvimento
 - JWT (autenticação)
 - Bcrypt (hash de senhas)
 
@@ -118,7 +118,9 @@ npm start
 
 ## Credenciais de Teste
 
-O sistema já vem com usuários de teste pré-cadastrados:
+Em desenvolvimento (ou com `SEED_DEMO_DATA=true`), o sistema insere usuários de teste
+no primeiro boot. **Em produção o seed é desativado por padrão** — o primeiro usuário
+se registra livremente e, a partir daí, apenas coordenadores podem registrar novos usuários.
 
 | Email | Senha | Tipo |
 |-------|-------|------|
@@ -199,6 +201,12 @@ Esporte/
 - `PUT /api/eventos/:id/status` - Atualizar status do evento
 - `GET /api/eventos/templates` - Listar templates de eventos
 
+### Notificações
+- `GET /api/notificacoes` - Listar minhas notificações
+- `GET /api/notificacoes/nao-lidas/count` - Contador de não lidas
+- `PUT /api/notificacoes/:id/ler` - Marcar como lida
+- `PUT /api/notificacoes/ler-todas` - Marcar todas como lidas
+
 ## Fluxos de Trabalho
 
 ### Fluxo de Transferência
@@ -271,13 +279,14 @@ Esporte/
 
 ## Próximos Passos / Melhorias Futuras
 
-- [ ] Notificações em tempo real
+- [x] Notificações (sino no topo, com polling)
+- [x] QR Code para rastreamento rápido (scanner via câmera na página de Equipamentos)
+- [x] Banco de dados persistente em produção (Postgres via `DATABASE_URL`)
 - [ ] Relatórios e dashboards avançados
 - [ ] Exportação de dados (PDF, Excel)
 - [ ] Sistema de reservas antecipadas
 - [ ] App mobile
 - [ ] Integração com calendário
-- [ ] QR Code para rastreamento rápido
 - [ ] Sistema de manutenção preventiva
 - [ ] Fotos dos equipamentos
 - [ ] Controle de custos e orçamentos

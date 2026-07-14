@@ -1,4 +1,5 @@
-const { db, getAsync, allAsync, runAsync } = require('../database/init');
+const { getAsync, allAsync, runAsync } = require('../database/init');
+const { criarNotificacao, notificarUsuarios } = require('../services/notificacoes');
 
 const transferenciasController = {
   // Listar transferências
@@ -104,7 +105,7 @@ const transferenciasController = {
         return res.status(400).json({ error: 'Equipamento em manutenção não pode ser transferido' });
       }
 
-      db.run(
+      const result = await runAsync(
         `INSERT INTO transferencias
          (equipamento_id, origem_tipo, origem_id, destino_tipo, destino_id,
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
@@ -112,25 +113,28 @@ const transferenciasController = {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [equipamento_id, origem_tipo, origem_id || null, destino_tipo, destino_id,
          req.user.id, responsavel_entrega_id || null, responsavel_recebimento_id || null,
-         coordenador_id || null, motivo || null, observacoes || null],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao criar transferência:', err);
-            return res.status(500).json({ error: 'Erro ao criar transferência' });
-          }
-
-          // Atualizar status do equipamento
-          await runAsync(
-            'UPDATE equipamentos SET status = ? WHERE id = ?',
-            ['transferencia', equipamento_id]
-          );
-
-          res.status(201).json({
-            message: 'Transferência solicitada com sucesso',
-            id: this.lastID
-          });
-        }
+         coordenador_id || null, motivo || null, observacoes || null]
       );
+
+      // Atualizar status do equipamento
+      await runAsync(
+        'UPDATE equipamentos SET status = ? WHERE id = ?',
+        ['transferencia', equipamento_id]
+      );
+
+      // Notificar envolvidos na aprovação
+      await notificarUsuarios(
+        [coordenador_id, responsavel_entrega_id, responsavel_recebimento_id],
+        'transferencia_pendente',
+        'Nova transferência pendente',
+        `Transferência do equipamento ${equipamento.codigo} (${equipamento.nome}) aguarda sua aprovação.`,
+        '/transferencias'
+      );
+
+      res.status(201).json({
+        message: 'Transferência solicitada com sucesso',
+        id: result.lastID
+      });
     } catch (error) {
       console.error('Erro ao criar transferência:', error);
       res.status(500).json({ error: 'Erro ao criar transferência' });
@@ -228,6 +232,22 @@ const transferenciasController = {
         );
       }
 
+      // Notificar o solicitante sobre o andamento
+      if (transferencia.solicitante_id !== userId) {
+        const descricaoStatus = {
+          aprovada_coordenador: 'foi aprovada pelo coordenador',
+          em_transito: 'está em trânsito',
+          concluida: 'foi concluída'
+        };
+        await criarNotificacao(
+          transferencia.solicitante_id,
+          'transferencia_atualizada',
+          'Transferência atualizada',
+          `Sua transferência #${id} ${descricaoStatus[novoStatus] || `recebeu aprovação de ${tipo_aprovacao}`}.`,
+          '/transferencias'
+        );
+      }
+
       res.json({ message: 'Aprovação registrada com sucesso', status: novoStatus });
     } catch (error) {
       console.error('Erro ao aprovar transferência:', error);
@@ -268,6 +288,17 @@ const transferenciasController = {
         ['disponivel', transferencia.equipamento_id]
       );
 
+      // Notificar o solicitante, caso não tenha sido ele a cancelar
+      if (transferencia.solicitante_id !== userId) {
+        await criarNotificacao(
+          transferencia.solicitante_id,
+          'transferencia_cancelada',
+          'Transferência cancelada',
+          `Sua transferência #${id} foi cancelada.${motivo ? ` Motivo: ${motivo}` : ''}`,
+          '/transferencias'
+        );
+      }
+
       res.json({ message: 'Transferência cancelada com sucesso' });
     } catch (error) {
       console.error('Erro ao cancelar transferência:', error);
@@ -300,28 +331,31 @@ const transferenciasController = {
         [responsavel_destino_id, area || equipamentoEvento.area, equipamento_id, evento_id]
       );
 
-      // Registrar transferência no sistema
-      db.run(
+      // Registrar transferência no sistema (já concluída, sem fluxo de aprovação)
+      const result = await runAsync(
         `INSERT INTO transferencias
          (equipamento_id, origem_tipo, origem_id, destino_tipo, destino_id,
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
           status, motivo, aprovacao_coordenador, aprovacao_entrega, aprovacao_recebimento)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1)`,
-        ['usuario', responsavel_origem_id || req.user.id, 'usuario', responsavel_destino_id,
+        [equipamento_id, 'usuario', responsavel_origem_id || req.user.id, 'usuario', responsavel_destino_id,
          req.user.id, req.user.id, responsavel_destino_id,
-         'concluida', motivo || 'Transferência entre responsáveis no mesmo evento'],
-        function(err) {
-          if (err) {
-            console.error('Erro ao registrar transferência:', err);
-            return res.status(500).json({ error: 'Erro ao registrar transferência' });
-          }
-
-          res.json({
-            message: 'Equipamento transferido com sucesso',
-            transferencia_id: this.lastID
-          });
-        }
+         'concluida', motivo || 'Transferência entre responsáveis no mesmo evento']
       );
+
+      // Notificar o novo responsável
+      await criarNotificacao(
+        responsavel_destino_id,
+        'equipamento_recebido',
+        'Equipamento transferido para você',
+        `Você agora é responsável pelo equipamento #${equipamento_id} no evento #${evento_id}.`,
+        '/transferencias'
+      );
+
+      res.json({
+        message: 'Equipamento transferido com sucesso',
+        transferencia_id: result.lastID
+      });
     } catch (error) {
       console.error('Erro ao transferir entre responsáveis:', error);
       res.status(500).json({ error: 'Erro ao transferir equipamento' });
@@ -391,7 +425,7 @@ const transferenciasController = {
       }
 
       // Criar transferência com aprovação tripla
-      db.run(
+      const result = await runAsync(
         `INSERT INTO transferencias
          (equipamento_id, origem_tipo, origem_id, destino_tipo, destino_id,
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
@@ -399,43 +433,46 @@ const transferenciasController = {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [equipamento_id, 'evento', evento_origem_id, 'evento', evento_destino_id,
          req.user.id, responsavel_entrega_id || null, responsavel_recebimento_id || null,
-         coordenador_id || null, motivo || 'Transferência urgente entre eventos simultâneos', observacoes || null],
-        async function(err) {
-          if (err) {
-            console.error('Erro ao criar transferência entre eventos:', err);
-            return res.status(500).json({ error: 'Erro ao criar transferência' });
-          }
-
-          // Atualizar status do equipamento
-          await runAsync(
-            'UPDATE equipamentos SET status = ? WHERE id = ?',
-            ['transferencia', equipamento_id]
-          );
-
-          // Adicionar observação sobre transferência urgente
-          await runAsync(
-            `INSERT INTO historico_movimentacoes
-             (equipamento_id, tipo_movimentacao, origem, destino, usuario_id, observacoes)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [equipamento_id,
-             'transferencia_urgente',
-             `Evento: ${eventoOrigem.nome}`,
-             `Evento: ${eventoDestino.nome}`,
-             req.user.id,
-             'Transferência entre eventos simultâneos']
-          );
-
-          res.status(201).json({
-            message: 'Transferência entre eventos criada com sucesso',
-            id: this.lastID,
-            info: {
-              evento_origem: eventoOrigem.nome,
-              evento_destino: eventoDestino.nome,
-              requer_aprovacoes: true
-            }
-          });
-        }
+         coordenador_id || null, motivo || 'Transferência urgente entre eventos simultâneos', observacoes || null]
       );
+
+      // Atualizar status do equipamento
+      await runAsync(
+        'UPDATE equipamentos SET status = ? WHERE id = ?',
+        ['transferencia', equipamento_id]
+      );
+
+      // Adicionar observação sobre transferência urgente
+      await runAsync(
+        `INSERT INTO historico_movimentacoes
+         (equipamento_id, tipo_movimentacao, origem, destino, usuario_id, observacoes)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [equipamento_id,
+         'transferencia_urgente',
+         `Evento: ${eventoOrigem.nome}`,
+         `Evento: ${eventoDestino.nome}`,
+         req.user.id,
+         'Transferência entre eventos simultâneos']
+      );
+
+      // Notificar envolvidos na aprovação
+      await notificarUsuarios(
+        [coordenador_id, responsavel_entrega_id, responsavel_recebimento_id],
+        'transferencia_pendente',
+        'Transferência urgente entre eventos',
+        `Transferência do equipamento #${equipamento_id} de "${eventoOrigem.nome}" para "${eventoDestino.nome}" aguarda sua aprovação.`,
+        '/transferencias'
+      );
+
+      res.status(201).json({
+        message: 'Transferência entre eventos criada com sucesso',
+        id: result.lastID,
+        info: {
+          evento_origem: eventoOrigem.nome,
+          evento_destino: eventoDestino.nome,
+          requer_aprovacoes: true
+        }
+      });
     } catch (error) {
       console.error('Erro ao transferir entre eventos:', error);
       res.status(500).json({ error: 'Erro ao criar transferência entre eventos' });

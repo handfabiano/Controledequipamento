@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, getAsync, allAsync } = require('../database/init');
+const { getAsync, runAsync } = require('../database/init');
+const { jwtSecret } = require('../config');
 
 const authController = {
   async login(req, res) {
@@ -28,7 +29,7 @@ const authController = {
 
       const token = jwt.sign(
         { id: usuario.id, email: usuario.email, tipo: usuario.tipo },
-        process.env.JWT_SECRET || 'secret_key_change_in_production',
+        jwtSecret,
         { expiresIn: '24h' }
       );
 
@@ -55,6 +56,33 @@ const authController = {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
       }
 
+      if (senha.length < 6) {
+        return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres' });
+      }
+
+      // Cadastro aberto apenas para o primeiro usuário (bootstrap do sistema).
+      // Depois disso, somente um coordenador autenticado pode registrar novos usuários.
+      const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
+
+      if (userCount.count > 0) {
+        const token = req.headers.authorization?.split(' ')[1];
+
+        if (!token) {
+          return res.status(401).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
+        }
+
+        let decoded;
+        try {
+          decoded = jwt.verify(token, jwtSecret);
+        } catch (err) {
+          return res.status(401).json({ error: 'Token inválido' });
+        }
+
+        if (decoded.tipo !== 'coordenador') {
+          return res.status(403).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
+        }
+      }
+
       const usuarioExiste = await getAsync('SELECT id FROM usuarios WHERE email = ?', [email]);
 
       if (usuarioExiste) {
@@ -63,21 +91,15 @@ const authController = {
 
       const senhaHash = await bcrypt.hash(senha, 10);
 
-      db.run(
+      const result = await runAsync(
         'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',
-        [nome, email, senhaHash, tipo],
-        function(err) {
-          if (err) {
-            console.error('Erro ao registrar usuário:', err);
-            return res.status(500).json({ error: 'Erro ao registrar usuário' });
-          }
-
-          res.status(201).json({
-            message: 'Usuário registrado com sucesso',
-            id: this.lastID
-          });
-        }
+        [nome, email, senhaHash, tipo]
       );
+
+      res.status(201).json({
+        message: 'Usuário registrado com sucesso',
+        id: result.lastID
+      });
     } catch (error) {
       console.error('Erro no registro:', error);
       res.status(500).json({ error: 'Erro ao registrar usuário' });

@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
+const { corsOrigins } = require('./config');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,7 +23,8 @@ async function ensureDatabase() {
 }
 
 // Middleware
-app.use(cors());
+// Se CORS_ORIGIN estiver definido, restringe às origens listadas; senão aceita todas
+app.use(cors(corsOrigins ? { origin: corsOrigins } : {}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
