@@ -67,6 +67,18 @@ const transferenciasController = {
         return res.status(404).json({ error: 'Transferência não encontrada' });
       }
 
+      const userId = req.user.id;
+      const envolvido = [
+        transferencia.solicitante_id,
+        transferencia.responsavel_entrega_id,
+        transferencia.responsavel_recebimento_id,
+        transferencia.coordenador_id
+      ].includes(userId);
+
+      if (!envolvido && req.user.tipo !== 'coordenador') {
+        return res.status(403).json({ error: 'Sem permissão para visualizar esta transferência' });
+      }
+
       res.json(transferencia);
     } catch (error) {
       console.error('Erro ao buscar transferência:', error);
@@ -163,6 +175,9 @@ const transferenciasController = {
 
       switch (tipo_aprovacao) {
         case 'coordenador':
+          if (req.user.tipo !== 'coordenador') {
+            return res.status(403).json({ error: 'Apenas coordenadores podem dar esta aprovação' });
+          }
           if (transferencia.coordenador_id && transferencia.coordenador_id !== userId) {
             return res.status(403).json({ error: 'Você não é o coordenador desta transferência' });
           }

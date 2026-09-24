@@ -250,8 +250,12 @@ const eventosController = {
         return res.status(400).json({ error: 'Status inválido' });
       }
 
-      // Se estiver tentando aprovar, validar checklist primeiro
+      // Se estiver tentando aprovar, apenas coordenadores podem e o checklist precisa estar completo
       if (status === 'aprovado') {
+        if (req.user.tipo !== 'coordenador') {
+          return res.status(403).json({ error: 'Apenas coordenadores podem aprovar eventos' });
+        }
+
         const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [id]);
 
         if (evento && evento.template_id) {
