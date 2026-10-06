@@ -33,6 +33,9 @@ if (!corsOrigins && isProduction) {
 function lerTrustProxy(valor, naVercel) {
   if (valor === undefined || valor === '') return naVercel ? 1 : false;
   if (valor === 'false') return false;
+  // "true" no Express significa "confie em qualquer X-Forwarded-For" (o cliente forjaria o
+  // próprio IP e o rate limit perderia o sentido); interpretamos como 1 proxy.
+  if (valor === 'true') return 1;
   if (/^\d+$/.test(valor)) return parseInt(valor, 10);
   return valor;
 }

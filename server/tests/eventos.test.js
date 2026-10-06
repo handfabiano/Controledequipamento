@@ -293,6 +293,20 @@ test('transferência entre eventos concluída move a alocação junto com o equi
   assert.strictEqual((await equip(eq)).status, 'disponivel');
 });
 
+test('transição de status concorrente não sobrescreve um estado final (guarda otimista)', async () => {
+  const id = await criarEvento();
+  await status(id, 'aprovado');
+  await status(id, 'em_andamento');
+
+  // Disparadas juntas: uma vence, a outra recebe 400/409 e o evento termina em estado final único
+  const [a, b] = await Promise.all([status(id, 'concluido'), status(id, 'cancelado')]);
+  const codigos = [a.status, b.status].sort();
+  assert.ok(codigos[0] === 200 && [400, 409].includes(codigos[1]), `esperado um 200 e um 400/409, veio ${codigos}`);
+
+  const final = (await evento(id)).status;
+  assert.strictEqual(final, a.status === 200 ? 'concluido' : 'cancelado');
+});
+
 test('templates: lista com checklist (cache)', async () => {
   const r1 = await srv.req('GET', '/api/eventos/templates', { token: t.coordenador });
   assert.strictEqual(r1.status, 200);

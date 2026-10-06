@@ -445,7 +445,16 @@ const eventosController = {
         }
       }
 
-      await runAsync('UPDATE eventos SET status = ? WHERE id = ?', [status, id]);
+      // A guarda no status lido evita que duas requisições simultâneas (ex.: concluir e
+      // cancelar) passem pela mesma transição e a última sobrescreva um estado final.
+      const atualizado = await runAsync(
+        'UPDATE eventos SET status = ? WHERE id = ? AND status = ?',
+        [status, id, evento.status]
+      );
+
+      if (atualizado.changes === 0) {
+        return res.status(409).json({ error: 'O evento foi alterado por outra requisição. Atualize e tente novamente.' });
+      }
 
       // Evento encerrado: as alocações são devolvidas e os equipamentos liberados
       // (cada um volta ao status que de fato lhe cabe: disponível, com problema, em

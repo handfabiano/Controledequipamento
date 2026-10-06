@@ -31,6 +31,21 @@ test('TRUST_PROXY numérico, "false" e valores do Express', () => {
   assert.strictEqual(lerConfig({ TRUST_PROXY: 'loopback' }).trustProxy, 'loopback');
 });
 
+test('TRUST_PROXY=true vira 1 proxy (o "true" do Express confiaria em qualquer cabeçalho)', () => {
+  assert.strictEqual(lerConfig({ TRUST_PROXY: 'true' }).trustProxy, 1);
+});
+
+test('TRUST_PROXY inválido derruba o boot com mensagem clara', () => {
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync(process.execPath, ['-e', "require('./index')"], {
+    cwd: path.join(__dirname, '..'),
+    env: { PATH: process.env.PATH, JWT_SECRET: 'x', TRUST_PROXY: 'talvez' },
+    encoding: 'utf8'
+  });
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /TRUST_PROXY inválido/);
+});
+
 test('limites de requisição: padrões e valores inválidos', () => {
   const padrao = lerConfig({});
   assert.strictEqual(padrao.rateLimitMax, 300);

@@ -1,7 +1,7 @@
 const { getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
 const cache = require('../cache');
-const { recalcularStatus, temProblemaGrave } = require('../services/equipamentoStatus');
+const { recalcularStatus, temProblemaGrave, GRAVIDADES_GRAVES } = require('../services/equipamentoStatus');
 
 // Status que o usuário pode definir manualmente; os demais são derivados pelo sistema
 // (problemas, transferências e eventos) — ver services/equipamentoStatus.js
@@ -402,10 +402,11 @@ const equipamentosController = {
         [req.user.id, problemaId]
       );
 
-      // Sem problemas graves restantes, a condição degradada pelo relato volta a "bom".
+      // Resolvido o último problema grave, a condição degradada pelo relato volta a "bom"
+      // (problemas leves não mexem na condição, que pode ter sido definida à mão).
       // O status é recalculado: um equipamento alocado em evento ou em transferência
       // NÃO volta a "disponível" só porque um problema foi resolvido.
-      if (!(await temProblemaGrave(id))) {
+      if (GRAVIDADES_GRAVES.includes(problema.gravidade) && !(await temProblemaGrave(id))) {
         await runAsync(
           "UPDATE equipamentos SET condicao = 'bom' WHERE id = ? AND condicao IN ('ruim', 'quebrado')",
           [id]

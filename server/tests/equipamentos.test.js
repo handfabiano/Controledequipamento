@@ -138,6 +138,14 @@ test('problema leve não muda status; resolver problema já resolvido dá 400', 
   assert.strictEqual((await resolver(id, leve.body.id)).status, 400);
 });
 
+test('resolver problema leve não apaga uma condição definida à mão', async () => {
+  const id = await criarEquipamento();
+  await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: { condicao: 'quebrado' } });
+  const leve = await reportar(id, 'media');
+  await resolver(id, leve.body.id);
+  assert.strictEqual((await obter(id)).condicao, 'quebrado');
+});
+
 test('manutenção é manual: problemas não a sobrescrevem', async () => {
   const id = await criarEquipamento();
   const put = await srv.req('PUT', `/api/equipamentos/${id}`, {

@@ -345,3 +345,81 @@ test('transferência entre eventos: exige eventos simultâneos, distintos e equi
   const duplicada = await pedir(e1, e2);
   assert.strictEqual(duplicada.status, 400, 'já existe transferência ativa');
 });
+
+test('entre eventos: quem não é responsável nem da equipe do evento de origem não pede', async () => {
+  const e1 = await eventoAprovado('Evento D', '2030-09-01T10:00', '2030-09-01T20:00');
+  const e2 = await eventoAprovado('Evento E', '2030-09-01T12:00', '2030-09-01T23:00');
+  const eqId = await novoEquipamento();
+  await alocar(e1, eqId, USUARIOS.entrega.id);
+
+  const pedir = (token) =>
+    srv.req('POST', '/api/transferencias/entre-eventos', {
+      token,
+      body: { equipamento_id: eqId, evento_origem_id: e1, evento_destino_id: e2 }
+    });
+
+  assert.strictEqual((await pedir(tecnico2)).status, 403);
+  assert.strictEqual((await equip(eqId)).status, 'em_uso', 'o pedido negado não pode travar o equipamento');
+  assert.strictEqual((await pedir(t.coordenador)).status, 201);
+});
+
+test('origem em evento exige o equipamento alocado; destino em evento exige evento ativo', async () => {
+  const ativo = await eventoAprovado('Evento F', '2030-10-01T10:00', '2030-10-01T20:00');
+  const encerrado = await eventoAprovado('Evento G', '2030-10-02T10:00', '2030-10-02T20:00');
+  await srv.req('PUT', `/api/eventos/${encerrado}/status`, { token: t.coordenador, body: { status: 'cancelado' } });
+  const eqId = await novoEquipamento();
+
+  const origemErrada = await solicitar(eqId, { origem_tipo: 'evento', origem_id: ativo, destino_id: 1 });
+  assert.strictEqual(origemErrada.status, 400, 'equipamento não está nesse evento');
+
+  const destinoEncerrado = await solicitar(eqId, { destino_tipo: 'evento', destino_id: encerrado });
+  assert.strictEqual(destinoEncerrado.status, 400);
+
+  const ok = await solicitar(eqId, { destino_tipo: 'evento', destino_id: ativo });
+  assert.strictEqual(ok.status, 201, ok.text);
+});
+
+test('concluir com destino fora de depósito preserva o depósito de origem', async () => {
+  const evento = await eventoAprovado('Evento H', '2030-11-01T10:00', '2030-11-01T20:00');
+  const eqId = await novoEquipamento({ deposito_id: 2 });
+  const { body } = await solicitar(eqId, { destino_tipo: 'evento', destino_id: evento });
+  await aprovar(body.id, 'coordenador', t.coordenador);
+  await aprovar(body.id, 'entrega', t.entrega);
+  assert.strictEqual((await aprovar(body.id, 'recebimento', t.recebimento)).body.status, 'concluida');
+
+  const eq = await equip(eqId);
+  assert.strictEqual(eq.deposito_id, 2, 'depósito de origem preservado');
+  assert.strictEqual(eq.status, 'em_uso', 'passou a fazer parte do evento de destino');
+});
+
+test('falha ao aplicar a conclusão desfaz a etapa e permite repetir (sem travar a transferência)', async () => {
+  const sqlite3 = require('sqlite3');
+  const eqId = await novoEquipamento({ deposito_id: 1 });
+  const { body } = await solicitar(eqId, { destino_id: 3 });
+  await aprovar(body.id, 'coordenador', t.coordenador);
+  await aprovar(body.id, 'entrega', t.entrega);
+
+  // Um trigger faz o registro do histórico falhar, simulando uma queda no meio da conclusão
+  const db = new sqlite3.Database(process.env.SQLITE_PATH);
+  const exec = (sql) => new Promise((res, rej) => db.exec(sql, (e) => (e ? rej(e) : res())));
+  await exec(`CREATE TRIGGER falha_historico BEFORE INSERT ON historico_movimentacoes
+              WHEN NEW.tipo_movimentacao = 'transferencia'
+              BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;`);
+
+  const falhou = await aprovar(body.id, 'recebimento', t.recebimento);
+  assert.strictEqual(falhou.status, 500);
+
+  const meio = await transf(body.id);
+  assert.strictEqual(meio.status, 'em_transito', 'voltou ao estado anterior');
+  assert.strictEqual(meio.aprovacao_recebimento, 0, 'etapa pode ser aprovada de novo');
+
+  await exec('DROP TRIGGER falha_historico');
+  db.close();
+
+  const de_novo = await aprovar(body.id, 'recebimento', t.recebimento);
+  assert.strictEqual(de_novo.status, 200, de_novo.text);
+  assert.strictEqual(de_novo.body.status, 'concluida');
+  const eq = await equip(eqId);
+  assert.strictEqual(eq.deposito_id, 3);
+  assert.strictEqual(eq.historico.filter((h) => h.tipo_movimentacao === 'transferencia').length, 1);
+});
