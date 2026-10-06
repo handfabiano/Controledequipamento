@@ -288,8 +288,9 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 - HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy
 - Cabeçalhos de segurança na API (`server/middleware/cabecalhos.js`) e no SPA (rota catch-all do
   `vercel.json`); `X-Powered-By` desligado
-- Log de segurança em JSON, uma linha por evento (`server/services/seguranca.js`), sem senhas, tokens
-  nem query string; na Vercel aparece nos logs da função
+- Log de segurança em JSON, uma linha por evento (`server/services/seguranca.js`): `login_sucesso`,
+  `login_falha`, `usuario_criado` e `acesso_negado` (401/403/429). Sem senhas, tokens nem query string;
+  na Vercel aparece nos logs da função
 
 ## Testes
 

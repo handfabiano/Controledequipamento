@@ -141,7 +141,7 @@ test('registro: senha acima de 72 bytes é recusada (bcrypt truncaria em silênc
 });
 
 test('registro: senha de exatamente 8 caracteres não comum é aceita', async () => {
-  const r = await registrarComSenha('tr0ca-me');
+  const r = await registrarComSenha('tr0ca-me', { email: 'aceita@x.com' });
   assert.strictEqual(r.status, 201);
 });
 
@@ -160,6 +160,16 @@ test('token assinado com outro algoritmo (HS512) é recusado, mesmo com a chave 
     body: { nome: 'Via HS512', email: 'hs512@x.com', senha: SENHA_VALIDA, tipo: 'tecnico' }
   });
   assert.strictEqual(registro.status, 401);
+});
+
+test('token enviado com outro esquema de autorização (não Bearer) é recusado', async () => {
+  const token = jwt.sign({ id: USUARIOS.coordenador.id, tipo: 'coordenador' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const comEsquema = (esquema) => srv.req('GET', '/api/auth/me', { headers: { Authorization: `${esquema} ${token}` } });
+
+  assert.strictEqual((await comEsquema('Bearer')).status, 200);
+  assert.strictEqual((await comEsquema('bearer')).status, 200);
+  assert.strictEqual((await comEsquema('Basic')).status, 401);
+  assert.strictEqual((await comEsquema('Token')).status, 401);
 });
 
 test('token "alg: none" é recusado', async () => {

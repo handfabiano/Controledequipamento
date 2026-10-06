@@ -10,6 +10,7 @@ const assinar = (payload) =>
 
 const verificar = (token) => jwt.verify(token, jwtSecret, { algorithms: [ALGORITMO] });
 
-const tokenDaRequisicao = (req) => req.headers.authorization?.split(' ')[1];
+// Só o esquema "Bearer": um token enviado como "Basic ..." ou outro esquema não vale.
+const tokenDaRequisicao = (req) => /^Bearer (\S+)$/i.exec(req.headers.authorization ?? '')?.[1];
 
 module.exports = { assinar, verificar, tokenDaRequisicao };

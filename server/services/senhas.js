@@ -2,16 +2,17 @@
 // custo do hash real e o do hash fictício do login nunca divirjam.
 const bcrypt = require('bcryptjs');
 
-const CUSTO_BCRYPT = 10;
 const TAMANHO_MINIMO = 8;
 // bcrypt só considera os 72 primeiros bytes; acima disso a senha seria truncada em silêncio.
 const TAMANHO_MAXIMO_BYTES = 72;
 
-// Hash de uma senha aleatória que ninguém conhece, com o mesmo custo dos hashes reais. Usado
-// quando o e-mail não existe, para o login demorar o mesmo que com uma senha errada (senão o
-// tempo de resposta revela quais e-mails estão cadastrados). Fixo no código para não custar um
-// hash a cada cold start; os testes garantem que o custo bate com CUSTO_BCRYPT.
+// Hash de uma senha aleatória que ninguém conhece. Usado quando o e-mail não existe, para o login
+// demorar o mesmo que com uma senha errada (senão o tempo de resposta revela quais e-mails estão
+// cadastrados). Fixo no código para não custar um hash a cada cold start.
+// Para mudar o custo do bcrypt, gere outro hash fictício com o novo custo: CUSTO_BCRYPT sai dele,
+// então o hash fictício e os hashes reais nunca divergem.
 const HASH_FICTICIO = '$2a$10$3nGvjFrIHN.YC7YY6k45EOOsxndB/7E9SDcp8vWqA6y7MKEX3.byC';
+const CUSTO_BCRYPT = bcrypt.getRounds(HASH_FICTICIO);
 
 const hashSenha = (senha) => bcrypt.hash(senha, CUSTO_BCRYPT);
 

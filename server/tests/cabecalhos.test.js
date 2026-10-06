@@ -49,8 +49,11 @@ test('HSTS só em produção', () => {
   assert.match(aplicar(true)['strict-transport-security'], /^max-age=\d+$/);
 });
 
-test('o vercel.json manda ao SPA os mesmos cabeçalhos da API', () => {
+test('o vercel.json manda a tudo que serve o SPA os mesmos cabeçalhos da API', () => {
   const { routes } = require('../../vercel.json');
-  const catchAll = routes.find((r) => r.src === '/(.*)');
-  assert.deepStrictEqual(catchAll.headers, CABECALHOS_BASE);
+  const doSpa = routes.filter((r) => r.dest.startsWith('client/build'));
+  assert.ok(doSpa.some((r) => r.src === '/(.*)'), 'rota catch-all do SPA');
+  for (const rota of doSpa) {
+    assert.deepStrictEqual(rota.headers, CABECALHOS_BASE, `rota ${rota.src}`);
+  }
 });
