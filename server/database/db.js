@@ -91,4 +91,7 @@ if (usePostgres) {
   };
 }
 
-module.exports = { usePostgres, runAsync, getAsync, allAsync };
+// Lista de placeholders para cláusulas IN: placeholders(['a', 'b']) => '?, ?'
+const placeholders = (valores) => valores.map(() => '?').join(', ');
+
+module.exports = { usePostgres, runAsync, getAsync, allAsync, placeholders };

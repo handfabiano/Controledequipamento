@@ -189,3 +189,8 @@ CREATE INDEX IF NOT EXISTS idx_transferencias_status ON transferencias(status);
 CREATE INDEX IF NOT EXISTS idx_eventos_status ON eventos(status);
 CREATE INDEX IF NOT EXISTS idx_eventos_data ON eventos(data_inicio, data_fim);
 CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id, lida);
+CREATE INDEX IF NOT EXISTS idx_problemas_equipamento ON problemas_equipamentos(equipamento_id, resolvido);
+CREATE INDEX IF NOT EXISTS idx_transferencias_equipamento ON transferencias(equipamento_id, status);
+CREATE INDEX IF NOT EXISTS idx_equipamentos_evento_equipamento ON equipamentos_evento(equipamento_id, status);
+CREATE INDEX IF NOT EXISTS idx_equipamentos_evento_evento ON equipamentos_evento(evento_id);
+CREATE INDEX IF NOT EXISTS idx_responsaveis_evento ON responsaveis_evento(evento_id, usuario_id);

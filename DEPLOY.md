@@ -32,7 +32,14 @@ Variáveis opcionais:
 ```
 SEED_DEMO_DATA=true    # Insere usuários/equipamentos de demonstração no primeiro boot (NÃO use em produção real)
 PG_POOL_MAX=3          # Tamanho do pool de conexões Postgres
+TRUST_PROXY=1          # Proxies confiáveis à frente do app (padrão: 1 na Vercel, desligado fora dela)
+RATE_LIMIT_MAX=300     # Requisições por IP a cada 15 min na API (padrão: 300)
+LOGIN_RATE_LIMIT_MAX=5 # Tentativas de login FALHAS por IP a cada 15 min (padrão: 5)
 ```
+
+> **Importante:** sem `TRUST_PROXY` atrás de um proxy (Vercel, nginx...), o rate limit enxerga o
+> IP do proxy e **todos os usuários dividem o mesmo contador** — 5 logins errados de qualquer
+> pessoa bloqueariam o login de todos. Na Vercel o padrão já é `1`.
 
 ## Banco de Dados
 

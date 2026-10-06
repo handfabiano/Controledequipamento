@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { eventos, equipamentos as equipamentosAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import './Eventos.css';
 
+// Eventos que ainda aceitam alterações (espelha as regras do servidor)
+const STATUS_ATIVOS = ['planejamento', 'aprovado', 'em_andamento'];
+
+// Próxima etapa que o coordenador pode dar a cada evento
+const PROXIMA_ETAPA = {
+  planejamento: { status: 'aprovado', rotulo: 'Aprovar', classe: 'btn-success' },
+  aprovado: { status: 'em_andamento', rotulo: 'Iniciar', classe: 'btn-primary' },
+  em_andamento: { status: 'concluido', rotulo: 'Concluir', classe: 'btn-success' },
+};
+
 function Eventos() {
+  const { user, isCoordenador } = useAuth();
   const [eventosList, setEventosList] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,16 +43,15 @@ function Eventos() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [eventosResponse, templatesResponse, equipamentosResponse] = await Promise.all([
+      const [eventosResponse, templatesResponse, equipamentosTodos] = await Promise.all([
         eventos.listar(),
         eventos.listarTemplates(),
-        equipamentosAPI.listar(),
+        equipamentosAPI.listarTodos({ status: 'disponivel' }),
       ]);
 
-      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
-      setEventosList(eventosResponse.data.data || eventosResponse.data);
-      setTemplates(templatesResponse.data.data || templatesResponse.data);
-      setEquipamentosList(equipamentosResponse.data.data || equipamentosResponse.data);
+      setEventosList(eventosResponse.data);
+      setTemplates(templatesResponse.data);
+      setEquipamentosList(equipamentosTodos);
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
       alert('Erro ao carregar eventos');
@@ -86,7 +97,7 @@ function Eventos() {
       loadData();
     } catch (error) {
       console.error('Erro ao adicionar equipamentos:', error);
-      alert('Erro ao adicionar equipamentos');
+      alert(error.response?.data?.error || 'Erro ao adicionar equipamentos');
     }
   };
 
@@ -103,6 +114,14 @@ function Eventos() {
   };
 
   const handleAtualizarStatus = async (eventoId, novoStatus) => {
+    const confirmacoes = {
+      concluido: 'Concluir o evento? Os equipamentos alocados serão devolvidos e liberados.',
+      cancelado: 'Cancelar o evento? Os equipamentos alocados serão liberados.',
+    };
+    if (confirmacoes[novoStatus] && !window.confirm(confirmacoes[novoStatus])) {
+      return;
+    }
+
     try {
       await eventos.atualizarStatus(eventoId, novoStatus);
       alert('Status atualizado com sucesso!');
@@ -201,15 +220,17 @@ function Eventos() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => {
-                        setSelectedEvento(evento);
-                        setShowEquipamentosModal(true);
-                      }}
-                    >
-                      Adicionar Equipamentos
-                    </button>
+                    {STATUS_ATIVOS.includes(evento.status) && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => {
+                          setSelectedEvento(evento);
+                          setShowEquipamentosModal(true);
+                        }}
+                      >
+                        Adicionar Equipamentos
+                      </button>
+                    )}
                     {evento.template_id && (
                       <button
                         className="btn btn-sm btn-warning"
@@ -218,12 +239,21 @@ function Eventos() {
                         Validar Checklist
                       </button>
                     )}
-                    {evento.status === 'planejamento' && (
+                    {isCoordenador() && PROXIMA_ETAPA[evento.status] && (
                       <button
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleAtualizarStatus(evento.id, 'aprovado')}
+                        className={`btn btn-sm ${PROXIMA_ETAPA[evento.status].classe}`}
+                        onClick={() => handleAtualizarStatus(evento.id, PROXIMA_ETAPA[evento.status].status)}
                       >
-                        Aprovar
+                        {PROXIMA_ETAPA[evento.status].rotulo}
+                      </button>
+                    )}
+                    {STATUS_ATIVOS.includes(evento.status) &&
+                      (isCoordenador() || evento.criado_por === user?.id) && (
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => handleAtualizarStatus(evento.id, 'cancelado')}
+                      >
+                        Cancelar
                       </button>
                     )}
                   </div>

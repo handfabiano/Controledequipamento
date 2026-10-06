@@ -1,6 +1,44 @@
-const { getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
+const { getAsync, allAsync, runAsync, placeholders, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
 const cache = require('../cache');
+const {
+  STATUS_MANUAIS,
+  GRAVIDADES_GRAVES,
+  calcularStatus,
+  recalcularStatus,
+  temProblemaGrave
+} = require('../services/equipamentoStatus');
+const { registrarMovimentacao } = require('../services/historico');
+
+const escapeHtml = (valor) =>
+  String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Campos opcionais de texto podem ser limpos enviando string vazia
+const textoOpcional = (novo, atual) => (novo !== undefined ? (novo === '' ? null : novo) : atual);
+
+// Confere se categoria e depósito informados existem; devolve a mensagem de erro ou null
+async function erroDeReferencias({ categoria_id, deposito_id }) {
+  if (categoria_id) {
+    const categoria = await getAsync('SELECT id FROM categorias_equipamentos WHERE id = ?', [categoria_id]);
+    if (!categoria) return 'Categoria não encontrada';
+  }
+
+  if (deposito_id) {
+    const deposito = await getAsync('SELECT id FROM depositos WHERE id = ?', [deposito_id]);
+    if (!deposito) return 'Depósito não encontrado';
+  }
+
+  return null;
+}
+
+const erroDeUnicidade = (error) =>
+  error && (error.code === '23505' || error.code === 'SQLITE_CONSTRAINT' ||
+    /UNIQUE constraint failed/i.test(error.message || ''));
 
 const equipamentosController = {
   // Listar todos os equipamentos com filtros
@@ -72,11 +110,10 @@ const equipamentosController = {
       // Buscar problemas não resolvidos para cada equipamento
       if (equipamentos.length > 0) {
         const ids = equipamentos.map(e => e.id);
-        const placeholders = ids.map(() => '?').join(',');
 
         const problemas = await allAsync(
           `SELECT * FROM problemas_equipamentos
-           WHERE equipamento_id IN (${placeholders}) AND resolvido = 0
+           WHERE equipamento_id IN (${placeholders(ids)}) AND resolvido = 0
            ORDER BY data_relato DESC`,
           ids
         );
@@ -162,6 +199,11 @@ const equipamentosController = {
         return res.status(400).json({ error: 'Nome e categoria são obrigatórios' });
       }
 
+      const erroReferencias = await erroDeReferencias({ categoria_id, deposito_id });
+      if (erroReferencias) {
+        return res.status(400).json({ error: erroReferencias });
+      }
+
       // Gerar ou validar código
       if (!codigo && !prefixo) {
         return res.status(400).json({
@@ -171,7 +213,8 @@ const equipamentosController = {
       }
 
       // Se foi fornecido apenas o prefixo (3 letras), gerar código automaticamente
-      if (prefixo && !codigo) {
+      const usouPrefixo = Boolean(prefixo && !codigo);
+      if (usouPrefixo) {
         if (prefixo.length !== 3 || !/^[A-Z]{3}$/.test(prefixo)) {
           return res.status(400).json({ error: 'Prefixo deve conter exatamente 3 letras maiúsculas (ex: MIC, CAI, MES)' });
         }
@@ -202,17 +245,31 @@ const equipamentosController = {
         tombamentoExiste = await getAsync('SELECT id FROM equipamentos WHERE tombamento = ?', [tombamento]);
       }
 
-      const result = await runAsync(
+      const inserir = () => runAsync(
         `INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao, observacoes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [codigo, tombamento, nome, categoria_id, marca, modelo, numero_serie, deposito_id, condicao || 'bom', observacoes]
       );
 
+      let result;
+      try {
+        result = await inserir();
+      } catch (error) {
+        // Duas criações simultâneas com o mesmo prefixo geram o mesmo código: o banco
+        // recusa a segunda (UNIQUE). Para código automático, tenta de novo com o próximo.
+        if (!erroDeUnicidade(error) || !usouPrefixo) throw error;
+        codigo = await gerarCodigo(prefixo);
+        result = await inserir();
+      }
+
       // Registrar no histórico
-      await runAsync(
-        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, destino, usuario_id, observacoes) VALUES (?, ?, ?, ?, ?)',
-        [result.lastID, 'criacao', deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito', req.user.id, 'Equipamento criado']
-      );
+      await registrarMovimentacao({
+        equipamentoId: result.lastID,
+        tipo: 'criacao',
+        destino: deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito',
+        usuarioId: req.user.id,
+        observacoes: 'Equipamento criado'
+      });
 
       res.status(201).json({
         message: 'Equipamento criado com sucesso',
@@ -237,6 +294,23 @@ const equipamentosController = {
         return res.status(404).json({ error: 'Equipamento não encontrado' });
       }
 
+      // em_uso, transferencia e com_problema são derivados de eventos, transferências e
+      // problemas; aceitar manualmente deixaria o status em desacordo com a realidade.
+      if (status && status !== equipamento.status && !STATUS_MANUAIS.includes(status)) {
+        return res.status(400).json({
+          error: `O status "${status}" é controlado pelo sistema (eventos, transferências e problemas). Defina apenas: ${STATUS_MANUAIS.join(', ')}`
+        });
+      }
+
+      const erroReferencias = await erroDeReferencias({ categoria_id, deposito_id });
+      if (erroReferencias) {
+        return res.status(400).json({ error: erroReferencias });
+      }
+
+      // "disponivel" manual significa "liberar": o status passa a refletir a situação real
+      // (ex.: continua em_uso se estiver alocado em evento)
+      const statusFinal = status === 'disponivel' ? await calcularStatus(id) : (status || equipamento.status);
+
       await runAsync(
         `UPDATE equipamentos
          SET nome = ?, categoria_id = ?, marca = ?, modelo = ?, numero_serie = ?,
@@ -245,21 +319,23 @@ const equipamentosController = {
          WHERE id = ?`,
         [nome || equipamento.nome,
          categoria_id || equipamento.categoria_id,
-         marca || equipamento.marca,
-         modelo || equipamento.modelo,
-         numero_serie || equipamento.numero_serie,
+         textoOpcional(marca, equipamento.marca),
+         textoOpcional(modelo, equipamento.modelo),
+         textoOpcional(numero_serie, equipamento.numero_serie),
          deposito_id !== undefined ? deposito_id : equipamento.deposito_id,
-         status || equipamento.status,
+         statusFinal,
          condicao || equipamento.condicao,
-         observacoes !== undefined ? observacoes : equipamento.observacoes,
+         textoOpcional(observacoes, equipamento.observacoes),
          id]
       );
 
       // Registrar alteração no histórico
-      await runAsync(
-        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, usuario_id, observacoes) VALUES (?, ?, ?, ?)',
-        [id, 'atualizacao', req.user.id, 'Dados do equipamento atualizados']
-      );
+      await registrarMovimentacao({
+        equipamentoId: id,
+        tipo: 'atualizacao',
+        usuarioId: req.user.id,
+        observacoes: 'Dados do equipamento atualizados'
+      });
 
       res.json({ message: 'Equipamento atualizado com sucesso' });
     } catch (error) {
@@ -289,13 +365,13 @@ const equipamentosController = {
         [id, descricao, gravidade, req.user.id]
       );
 
-      // Atualizar status do equipamento se gravidade for alta ou crítica
-      if (gravidade === 'alta' || gravidade === 'critica') {
-        await runAsync(
-          'UPDATE equipamentos SET status = ?, condicao = ? WHERE id = ?',
-          ['com_problema', gravidade === 'critica' ? 'quebrado' : 'ruim', id]
-        );
+      // Problema alta/crítica degrada a condição ("quebrado" nunca é rebaixado para "ruim")
+      // e o status passa a ser com_problema (derivado, ver services/equipamentoStatus.js)
+      if (GRAVIDADES_GRAVES.includes(gravidade)) {
+        const condicaoNova = gravidade === 'critica' || equipamento.condicao === 'quebrado' ? 'quebrado' : 'ruim';
+        await runAsync('UPDATE equipamentos SET condicao = ? WHERE id = ?', [condicaoNova, id]);
       }
+      await recalcularStatus(id);
 
       res.status(201).json({
         message: 'Problema reportado com sucesso',
@@ -321,24 +397,26 @@ const equipamentosController = {
         return res.status(404).json({ error: 'Problema não encontrado' });
       }
 
+      if (problema.resolvido) {
+        return res.status(400).json({ error: 'Este problema já foi resolvido' });
+      }
+
       await runAsync(
         'UPDATE problemas_equipamentos SET resolvido = 1, resolvido_por = ?, data_resolucao = CURRENT_TIMESTAMP WHERE id = ?',
         [req.user.id, problemaId]
       );
 
-      // Verificar se há outros problemas não resolvidos
-      const outrosProblemas = await allAsync(
-        'SELECT * FROM problemas_equipamentos WHERE equipamento_id = ? AND resolvido = 0 AND id != ?',
-        [id, problemaId]
-      );
-
-      // Se não houver mais problemas, atualizar status do equipamento
-      if (outrosProblemas.length === 0) {
+      // Resolvido o último problema grave, a condição degradada pelo relato volta a "bom"
+      // (problemas leves não mexem na condição, que pode ter sido definida à mão).
+      // O status é recalculado: um equipamento alocado em evento ou em transferência
+      // NÃO volta a "disponível" só porque um problema foi resolvido.
+      if (GRAVIDADES_GRAVES.includes(problema.gravidade) && !(await temProblemaGrave(id))) {
         await runAsync(
-          'UPDATE equipamentos SET status = ?, condicao = ? WHERE id = ?',
-          ['disponivel', 'bom', id]
+          "UPDATE equipamentos SET condicao = 'bom' WHERE id = ? AND condicao IN ('ruim', 'quebrado')",
+          [id]
         );
       }
+      await recalcularStatus(id);
 
       res.json({ message: 'Problema resolvido com sucesso' });
     } catch (error) {
@@ -472,7 +550,7 @@ const equipamentosController = {
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>Etiqueta - ${equipamento.codigo}</title>
+          <title>Etiqueta - ${escapeHtml(equipamento.codigo)}</title>
           <style>
             @page { size: 10cm 5cm; margin: 0; }
             body {
@@ -531,9 +609,9 @@ const equipamentosController = {
           <div class="etiqueta">
             <div>
               <div class="header">EQUIPAMENTO</div>
-              <div class="codigo">${equipamento.codigo}</div>
-              <div class="info">${equipamento.nome}</div>
-              <div class="info">${equipamento.marca || ''} ${equipamento.modelo || ''}</div>
+              <div class="codigo">${escapeHtml(equipamento.codigo)}</div>
+              <div class="info">${escapeHtml(equipamento.nome)}</div>
+              <div class="info">${escapeHtml(equipamento.marca)} ${escapeHtml(equipamento.modelo)}</div>
             </div>
             <div class="qrcode">
               <img src="${qrCodeDataURL}" alt="QR Code" />
@@ -546,7 +624,9 @@ const equipamentosController = {
         </html>
       `;
 
-      res.setHeader('Content-Type', 'text/html');
+      // Defesa em profundidade: a etiqueta não precisa de scripts nem de recursos externos
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'");
       res.send(etiquetaHTML);
     } catch (error) {
       console.error('Erro ao gerar etiqueta:', error);

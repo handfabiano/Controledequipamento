@@ -1,12 +1,206 @@
-const { getAsync, allAsync, runAsync } = require('../database/init');
+const { getAsync, allAsync, runAsync, placeholders } = require('../database/init');
 const { criarNotificacao, notificarUsuarios } = require('../services/notificacoes');
+const { recalcularStatus, temTransferenciaAtiva } = require('../services/equipamentoStatus');
+const { registrarMovimentacao } = require('../services/historico');
+const { buscarUsuarioAtivo } = require('../services/usuarios');
+const { informado, inteiro } = require('../services/validacao');
+const { ehEquipeDoEvento, eventoAtivo, AREAS, STATUS_EVENTO_TRANSFERIVEL } = require('../services/eventos');
+const {
+  TIPOS_LOCAL,
+  TIPOS_APROVACAO,
+  FINALIZADAS,
+  condicaoVisibilidade,
+  podeVer,
+  statusPelasAprovacoes
+} = require('../services/transferencias');
+
+// Cláusula (e parâmetros) para só alterar transferências ainda não finalizadas
+const NAO_FINALIZADA = `status NOT IN (${placeholders(FINALIZADAS)})`;
+
+// Como confirmar que um local (depósito, evento ou usuário) existe, e como chamá-lo na mensagem
+const CONSULTA_LOCAL = {
+  deposito: ['SELECT id FROM depositos WHERE id = ?', 'Depósito'],
+  evento: ['SELECT * FROM eventos WHERE id = ?', 'Evento'],
+  usuario: ['SELECT id, nome, tipo FROM usuarios WHERE id = ? AND ativo = 1', 'Usuário']
+};
+
+// Busca o local. Devolve { registro } ou { erro } com a mensagem pronta.
+async function buscarLocal(tipo, id, rotulo) {
+  const [consulta, nome] = CONSULTA_LOCAL[tipo];
+  const registro = await getAsync(consulta, [id]);
+  return registro ? { registro } : { erro: `${rotulo}: ${nome.toLowerCase()} ${id} não encontrado` };
+}
+
+// Lê e valida os responsáveis informados na solicitação (todos opcionais).
+// Devolve { entregaId, recebimentoId, coordenadorId } ou { erro }.
+async function lerResponsaveis({ responsavel_entrega_id, responsavel_recebimento_id, coordenador_id }) {
+  const resultado = { entregaId: null, recebimentoId: null, coordenadorId: null };
+  const campos = [
+    ['responsavel_entrega_id', responsavel_entrega_id, 'entregaId'],
+    ['responsavel_recebimento_id', responsavel_recebimento_id, 'recebimentoId'],
+    ['coordenador_id', coordenador_id, 'coordenadorId']
+  ];
+
+  for (const [campo, valor, chave] of campos) {
+    if (!informado(valor)) continue;
+
+    const id = inteiro(valor);
+    if (id === null) return { erro: `${campo} inválido` };
+
+    const usuario = await buscarUsuarioAtivo(id);
+    if (!usuario) return { erro: `Usuário de ${campo} não encontrado` };
+
+    // Só coordenadores podem dar a aprovação de coordenador: designar outro perfil
+    // deixaria a transferência impossível de aprovar.
+    if (campo === 'coordenador_id' && usuario.tipo !== 'coordenador') {
+      return { erro: 'coordenador_id deve ser um usuário do tipo coordenador' };
+    }
+
+    resultado[chave] = id;
+  }
+  return resultado;
+}
+
+async function erroEquipamentoNaoTransferivel(equipamento) {
+  if (equipamento.status === 'manutencao') {
+    return 'Equipamento em manutenção não pode ser transferido';
+  }
+  if (await temTransferenciaAtiva(equipamento.id)) {
+    return 'Este equipamento já possui uma transferência em andamento';
+  }
+  return null;
+}
+
+// Ao concluir uma transferência com evento envolvido, a alocação acompanha o equipamento:
+// sai do evento de origem (marcada como devolvida) e entra no de destino. Sem isso, o fim
+// do evento de origem liberaria um equipamento que está fisicamente em outro evento.
+async function moverAlocacaoEmEventos(transferencia) {
+  if (transferencia.origem_tipo === 'evento' && transferencia.origem_id) {
+    await runAsync(
+      `UPDATE equipamentos_evento SET status = 'devolvido'
+       WHERE evento_id = ? AND equipamento_id = ? AND status != 'devolvido'`,
+      [transferencia.origem_id, transferencia.equipamento_id]
+    );
+  }
+
+  if (transferencia.destino_tipo !== 'evento') return;
+
+  const destino = await getAsync('SELECT * FROM eventos WHERE id = ?', [transferencia.destino_id]);
+  if (!destino || !eventoAtivo(destino)) return;
+
+  const jaAlocado = await getAsync(
+    `SELECT id FROM equipamentos_evento
+     WHERE evento_id = ? AND equipamento_id = ? AND status != 'devolvido'`,
+    [transferencia.destino_id, transferencia.equipamento_id]
+  );
+  if (jaAlocado) return;
+
+  const origem = transferencia.origem_tipo === 'evento'
+    ? await getAsync(
+      'SELECT responsavel_id, area, quantidade FROM equipamentos_evento WHERE evento_id = ? AND equipamento_id = ? ORDER BY id DESC LIMIT 1',
+      [transferencia.origem_id, transferencia.equipamento_id]
+    )
+    : null;
+
+  await runAsync(
+    `INSERT INTO equipamentos_evento (evento_id, equipamento_id, responsavel_id, area, quantidade, status, observacoes)
+     VALUES (?, ?, ?, ?, ?, 'entregue', ?)`,
+    [transferencia.destino_id, transferencia.equipamento_id,
+     origem?.responsavel_id || transferencia.responsavel_recebimento_id || null,
+     origem?.area || 'geral', origem?.quantidade || 1,
+     `Recebido pela transferência #${transferencia.id}`]
+  );
+}
+
+// Autorização de cada etapa de aprovação. Com responsável designado, só ele aprova; sem
+// designado (o caso da tela de solicitação), vale o perfil do usuário — a mesma regra que a
+// tela usa para mostrar os botões. Devolve { status, error } quando recusada, ou null.
+function verificarAutorizacaoDaEtapa(tipo, transferencia, usuario) {
+  if (tipo === 'coordenador') {
+    if (usuario.tipo !== 'coordenador') {
+      return { status: 403, error: 'Apenas coordenadores podem dar esta aprovação' };
+    }
+    if (transferencia.coordenador_id && transferencia.coordenador_id !== usuario.id) {
+      return { status: 403, error: 'Você não é o coordenador desta transferência' };
+    }
+    return null;
+  }
+
+  const etapa = {
+    entrega: {
+      designado: transferencia.responsavel_entrega_id,
+      perfil: 'responsavel_entrega',
+      naoEhDesignado: 'Você não é o responsável pela entrega',
+      perfilErrado: 'Apenas o responsável pela entrega ou um coordenador pode confirmar a entrega'
+    },
+    recebimento: {
+      designado: transferencia.responsavel_recebimento_id,
+      perfil: 'responsavel_recebimento',
+      naoEhDesignado: 'Você não é o responsável pelo recebimento',
+      perfilErrado: 'Apenas o responsável pelo recebimento ou um coordenador pode confirmar o recebimento'
+    }
+  }[tipo];
+
+  if (etapa.designado) {
+    if (etapa.designado !== usuario.id) return { status: 403, error: etapa.naoEhDesignado };
+  } else if (![etapa.perfil, 'coordenador'].includes(usuario.tipo)) {
+    return { status: 403, error: etapa.perfilErrado };
+  }
+
+  if (tipo === 'recebimento' && !transferencia.aprovacao_entrega) {
+    return { status: 400, error: 'Aguardando a confirmação da entrega' };
+  }
+  return null;
+}
+
+// Marca a transferência como concluída e aplica seus efeitos (depósito, alocação, status e
+// histórico do equipamento). `atual` é a linha com as três aprovações já registradas.
+async function concluirTransferencia(atual, usuario, campo) {
+  const concluida = await runAsync(
+    `UPDATE transferencias SET status = 'concluida', data_conclusao = CURRENT_TIMESTAMP
+     WHERE id = ? AND ${NAO_FINALIZADA}`,
+    [atual.id, ...FINALIZADAS]
+  );
+
+  // Só quem de fato concluiu aplica os efeitos (uma única vez)
+  if (concluida.changes !== 1) return;
+
+  try {
+    // Fora de depósito (evento, usuário) o equipamento mantém o depósito de origem,
+    // para onde volta quando o uso terminar
+    if (atual.destino_tipo === 'deposito') {
+      await runAsync('UPDATE equipamentos SET deposito_id = ? WHERE id = ?', [atual.destino_id, atual.equipamento_id]);
+    }
+
+    await moverAlocacaoEmEventos(atual);
+    await recalcularStatus(atual.equipamento_id);
+
+    await registrarMovimentacao({
+      equipamentoId: atual.equipamento_id,
+      tipo: 'transferencia',
+      origem: `${atual.origem_tipo}: ${atual.origem_id || 'N/A'}`,
+      destino: `${atual.destino_tipo}: ${atual.destino_id}`,
+      usuarioId: usuario.id,
+      observacoes: `Transferência #${atual.id} concluída`
+    });
+  } catch (erro) {
+    // Sem transações no banco, uma falha aqui deixaria a transferência "concluída" com o
+    // equipamento sem mover e sem como tentar de novo. Desfazemos a conclusão e a aprovação
+    // desta etapa; os efeitos acima são idempotentes, então repetir é seguro.
+    await runAsync(
+      `UPDATE transferencias SET status = ?, data_conclusao = NULL, ${campo} = 0 WHERE id = ?`,
+      [statusPelasAprovacoes({ ...atual, [campo]: 0 }), atual.id]
+    ).catch((erroReversao) => console.error('Falha ao reverter conclusão da transferência:', erroReversao));
+    throw erro;
+  }
+}
 
 const transferenciasController = {
-  // Listar transferências
+  // Listar transferências visíveis ao usuário
   async listar(req, res) {
     try {
       const { status } = req.query;
-      const userId = req.user.id;
+      const { clause, params } = condicaoVisibilidade(req.user);
 
       let query = `
         SELECT t.*,
@@ -21,20 +215,19 @@ const transferenciasController = {
         LEFT JOIN usuarios ent ON t.responsavel_entrega_id = ent.id
         LEFT JOIN usuarios rec ON t.responsavel_recebimento_id = rec.id
         LEFT JOIN usuarios coord ON t.coordenador_id = coord.id
-        WHERE (t.solicitante_id = ? OR t.responsavel_entrega_id = ? OR
-               t.responsavel_recebimento_id = ? OR t.coordenador_id = ?)
+        WHERE ${clause}
       `;
 
-      const params = [userId, userId, userId, userId];
+      const valores = [...params];
 
       if (status) {
         query += ' AND t.status = ?';
-        params.push(status);
+        valores.push(status);
       }
 
-      query += ' ORDER BY t.data_solicitacao DESC';
+      query += ' ORDER BY t.data_solicitacao DESC, t.id DESC';
 
-      const transferencias = await allAsync(query, params);
+      const transferencias = await allAsync(query, valores);
       res.json(transferencias);
     } catch (error) {
       console.error('Erro ao listar transferências:', error);
@@ -67,15 +260,7 @@ const transferenciasController = {
         return res.status(404).json({ error: 'Transferência não encontrada' });
       }
 
-      const userId = req.user.id;
-      const envolvido = [
-        transferencia.solicitante_id,
-        transferencia.responsavel_entrega_id,
-        transferencia.responsavel_recebimento_id,
-        transferencia.coordenador_id
-      ].includes(userId);
-
-      if (!envolvido && req.user.tipo !== 'coordenador') {
+      if (!podeVer(req.user, transferencia)) {
         return res.status(403).json({ error: 'Sem permissão para visualizar esta transferência' });
       }
 
@@ -95,9 +280,6 @@ const transferenciasController = {
         origem_id,
         destino_tipo,
         destino_id,
-        responsavel_entrega_id,
-        responsavel_recebimento_id,
-        coordenador_id,
         motivo,
         observacoes
       } = req.body;
@@ -106,16 +288,64 @@ const transferenciasController = {
         return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
       }
 
+      if (!TIPOS_LOCAL.includes(origem_tipo) || !TIPOS_LOCAL.includes(destino_tipo)) {
+        return res.status(400).json({ error: `Tipos de origem/destino devem ser: ${TIPOS_LOCAL.join(', ')}` });
+      }
+
+      const equipamentoId = inteiro(equipamento_id);
+      const destinoId = inteiro(destino_id);
+      if (equipamentoId === null || destinoId === null) {
+        return res.status(400).json({ error: 'equipamento_id e destino_id devem ser números inteiros' });
+      }
+
       // Verificar se equipamento existe e está disponível para transferência
-      const equipamento = await getAsync('SELECT * FROM equipamentos WHERE id = ?', [equipamento_id]);
+      const equipamento = await getAsync('SELECT * FROM equipamentos WHERE id = ?', [equipamentoId]);
 
       if (!equipamento) {
         return res.status(404).json({ error: 'Equipamento não encontrado' });
       }
 
-      if (equipamento.status === 'manutencao') {
-        return res.status(400).json({ error: 'Equipamento em manutenção não pode ser transferido' });
+      const erroEquipamento = await erroEquipamentoNaoTransferivel(equipamento);
+      if (erroEquipamento) {
+        return res.status(400).json({ error: erroEquipamento });
       }
+
+      // A tela de solicitação deixa a origem opcional: para depósito, assume o atual
+      // do equipamento; sem informação, grava 0 ("não informado").
+      let origemId = inteiro(origem_id);
+      if (informado(origem_id)) {
+        if (origemId === null) {
+          return res.status(400).json({ error: 'origem_id deve ser um número inteiro' });
+        }
+
+        const origem = await buscarLocal(origem_tipo, origemId, 'Origem');
+        if (origem.erro) return res.status(400).json({ error: origem.erro });
+
+        // Origem em evento: o equipamento precisa estar de fato alocado nele (senão a
+        // conclusão não teria de onde tirar a alocação)
+        if (origem_tipo === 'evento') {
+          const alocado = await getAsync(
+            "SELECT id FROM equipamentos_evento WHERE evento_id = ? AND equipamento_id = ? AND status != 'devolvido'",
+            [origemId, equipamentoId]
+          );
+          if (!alocado) {
+            return res.status(400).json({ error: 'O equipamento não está alocado no evento de origem informado' });
+          }
+        }
+      } else {
+        origemId = origem_tipo === 'deposito' ? (equipamento.deposito_id || 0) : 0;
+      }
+
+      const destino = await buscarLocal(destino_tipo, destinoId, 'Destino');
+      if (destino.erro) return res.status(400).json({ error: destino.erro });
+
+      if (destino_tipo === 'evento' && !eventoAtivo(destino.registro)) {
+        return res.status(400).json({ error: 'O evento de destino já foi encerrado' });
+      }
+
+      const responsaveis = await lerResponsaveis(req.body);
+      if (responsaveis.erro) return res.status(400).json({ error: responsaveis.erro });
+      const { entregaId, recebimentoId, coordenadorId } = responsaveis;
 
       const result = await runAsync(
         `INSERT INTO transferencias
@@ -123,20 +353,16 @@ const transferenciasController = {
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
           coordenador_id, motivo, observacoes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [equipamento_id, origem_tipo, origem_id || null, destino_tipo, destino_id,
-         req.user.id, responsavel_entrega_id || null, responsavel_recebimento_id || null,
-         coordenador_id || null, motivo || null, observacoes || null]
+        [equipamentoId, origem_tipo, origemId, destino_tipo, destinoId,
+         req.user.id, entregaId, recebimentoId, coordenadorId, motivo || null, observacoes || null]
       );
 
-      // Atualizar status do equipamento
-      await runAsync(
-        'UPDATE equipamentos SET status = ? WHERE id = ?',
-        ['transferencia', equipamento_id]
-      );
+      // O equipamento passa a "transferencia" (ou continua "com_problema")
+      await recalcularStatus(equipamentoId);
 
       // Notificar envolvidos na aprovação
       await notificarUsuarios(
-        [coordenador_id, responsavel_entrega_id, responsavel_recebimento_id],
+        [coordenadorId, entregaId, recebimentoId],
         'transferencia_pendente',
         'Nova transferência pendente',
         `Transferência do equipamento ${equipamento.codigo} (${equipamento.nome}) aguarda sua aprovação.`,
@@ -157,8 +383,12 @@ const transferenciasController = {
   async aprovar(req, res) {
     try {
       const { id } = req.params;
-      const { tipo_aprovacao } = req.body; // 'coordenador', 'entrega', 'recebimento'
-      const userId = req.user.id;
+      const { tipo_aprovacao } = req.body;
+      const usuario = req.user;
+
+      if (!TIPOS_APROVACAO.includes(tipo_aprovacao)) {
+        return res.status(400).json({ error: 'Tipo de aprovação inválido' });
+      }
 
       const transferencia = await getAsync('SELECT * FROM transferencias WHERE id = ?', [id]);
 
@@ -166,89 +396,49 @@ const transferenciasController = {
         return res.status(404).json({ error: 'Transferência não encontrada' });
       }
 
-      if (transferencia.status === 'concluida' || transferencia.status === 'cancelada') {
+      if (FINALIZADAS.includes(transferencia.status)) {
         return res.status(400).json({ error: 'Transferência já finalizada' });
       }
 
-      let updates = {};
-      let novoStatus = transferencia.status;
-
-      switch (tipo_aprovacao) {
-        case 'coordenador':
-          if (req.user.tipo !== 'coordenador') {
-            return res.status(403).json({ error: 'Apenas coordenadores podem dar esta aprovação' });
-          }
-          if (transferencia.coordenador_id && transferencia.coordenador_id !== userId) {
-            return res.status(403).json({ error: 'Você não é o coordenador desta transferência' });
-          }
-          updates.aprovacao_coordenador = 1;
-          novoStatus = 'aprovada_coordenador';
-          break;
-
-        case 'entrega':
-          if (transferencia.responsavel_entrega_id && transferencia.responsavel_entrega_id !== userId) {
-            return res.status(403).json({ error: 'Você não é o responsável pela entrega' });
-          }
-          updates.aprovacao_entrega = 1;
-          if (transferencia.aprovacao_coordenador) {
-            novoStatus = 'em_transito';
-          }
-          break;
-
-        case 'recebimento':
-          if (transferencia.responsavel_recebimento_id && transferencia.responsavel_recebimento_id !== userId) {
-            return res.status(403).json({ error: 'Você não é o responsável pelo recebimento' });
-          }
-          updates.aprovacao_recebimento = 1;
-          // Se todas as aprovações foram dadas, concluir transferência
-          if (transferencia.aprovacao_coordenador && transferencia.aprovacao_entrega) {
-            novoStatus = 'concluida';
-            updates.data_conclusao = new Date().toISOString();
-
-            // Atualizar localização do equipamento
-            await runAsync(
-              'UPDATE equipamentos SET deposito_id = ?, status = ? WHERE id = ?',
-              [transferencia.destino_tipo === 'deposito' ? transferencia.destino_id : null,
-               'disponivel',
-               transferencia.equipamento_id]
-            );
-
-            // Registrar no histórico
-            await runAsync(
-              `INSERT INTO historico_movimentacoes
-               (equipamento_id, tipo_movimentacao, origem, destino, usuario_id, observacoes)
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [transferencia.equipamento_id,
-               'transferencia',
-               `${transferencia.origem_tipo}: ${transferencia.origem_id || 'N/A'}`,
-               `${transferencia.destino_tipo}: ${transferencia.destino_id}`,
-               userId,
-               `Transferência #${id} concluída`]
-            );
-          }
-          break;
-
-        default:
-          return res.status(400).json({ error: 'Tipo de aprovação inválido' });
+      const campo = `aprovacao_${tipo_aprovacao}`;
+      if (transferencia[campo]) {
+        return res.status(400).json({ error: 'Esta etapa já foi aprovada' });
       }
 
-      const setClauses = Object.keys(updates).map(key => `${key} = ?`).join(', ');
-      const values = [...Object.values(updates), novoStatus];
+      const recusa = verificarAutorizacaoDaEtapa(tipo_aprovacao, transferencia, usuario);
+      if (recusa) {
+        return res.status(recusa.status).json({ error: recusa.error });
+      }
 
-      if (!transferencia.data_aprovacao && tipo_aprovacao === 'coordenador') {
+      // 1) Registra a aprovação de forma atômica: se outra requisição aprovou a mesma
+      //    etapa (ou finalizou a transferência) no meio tempo, nada é alterado.
+      const registrada = await runAsync(
+        `UPDATE transferencias
+         SET ${campo} = 1${tipo_aprovacao === 'coordenador' ? ', data_aprovacao = CURRENT_TIMESTAMP' : ''}
+         WHERE id = ? AND ${campo} = 0 AND ${NAO_FINALIZADA}`,
+        [id, ...FINALIZADAS]
+      );
+
+      if (registrada.changes === 0) {
+        return res.status(409).json({ error: 'A transferência foi alterada por outra requisição. Atualize e tente novamente.' });
+      }
+
+      // 2) O status é derivado das aprovações reais (relidas), não do que esta
+      //    requisição viu: duas aprovações simultâneas não deixam a transferência travada.
+      const atual = await getAsync('SELECT * FROM transferencias WHERE id = ?', [id]);
+      const novoStatus = statusPelasAprovacoes(atual);
+
+      if (novoStatus === 'concluida') {
+        await concluirTransferencia(atual, usuario, campo);
+      } else if (novoStatus !== atual.status) {
         await runAsync(
-          `UPDATE transferencias SET ${setClauses}, status = ?, data_aprovacao = CURRENT_TIMESTAMP WHERE id = ?`,
-          [...values, id]
-        );
-      } else {
-        await runAsync(
-          `UPDATE transferencias SET ${setClauses}, status = ? WHERE id = ?`,
-          [...values, id]
+          `UPDATE transferencias SET status = ? WHERE id = ? AND ${NAO_FINALIZADA}`,
+          [novoStatus, id, ...FINALIZADAS]
         );
       }
 
       // Notificar o solicitante sobre o andamento
-      if (transferencia.solicitante_id !== userId) {
+      if (transferencia.solicitante_id !== usuario.id) {
         const descricaoStatus = {
           aprovada_coordenador: 'foi aprovada pelo coordenador',
           em_transito: 'está em trânsito',
@@ -287,21 +477,33 @@ const transferenciasController = {
         return res.status(400).json({ error: 'Não é possível cancelar transferência concluída' });
       }
 
+      if (transferencia.status === 'cancelada') {
+        return res.status(400).json({ error: 'Transferência já está cancelada' });
+      }
+
       // Apenas coordenador ou solicitante podem cancelar
       if (req.user.tipo !== 'coordenador' && transferencia.solicitante_id !== userId) {
         return res.status(403).json({ error: 'Sem permissão para cancelar esta transferência' });
       }
 
-      await runAsync(
-        'UPDATE transferencias SET status = ?, observacoes = ? WHERE id = ?',
-        ['cancelada', motivo || transferencia.observacoes, id]
+      // O motivo é acrescentado às observações (antes substituía o que já havia)
+      const observacoes = [transferencia.observacoes, motivo ? `Cancelamento: ${motivo}` : null]
+        .filter(Boolean)
+        .join('\n') || null;
+
+      const cancelada = await runAsync(
+        `UPDATE transferencias SET status = 'cancelada', observacoes = ?
+         WHERE id = ? AND ${NAO_FINALIZADA}`,
+        [observacoes, id, ...FINALIZADAS]
       );
 
-      // Restaurar status do equipamento
-      await runAsync(
-        'UPDATE equipamentos SET status = ? WHERE id = ?',
-        ['disponivel', transferencia.equipamento_id]
-      );
+      if (cancelada.changes === 0) {
+        return res.status(409).json({ error: 'A transferência foi alterada por outra requisição. Atualize e tente novamente.' });
+      }
+
+      // O equipamento volta ao status que de fato lhe cabe (em evento, com problema...),
+      // e não, cegamente, a "disponível"
+      await recalcularStatus(transferencia.equipamento_id);
 
       // Notificar o solicitante, caso não tenha sido ele a cancelar
       if (transferencia.solicitante_id !== userId) {
@@ -324,26 +526,65 @@ const transferenciasController = {
   // Transferência rápida entre responsáveis (no mesmo evento)
   async transferirEntreResponsaveis(req, res) {
     try {
-      const { equipamento_id, evento_id, responsavel_origem_id, responsavel_destino_id, area, motivo } = req.body;
+      const { equipamento_id, evento_id, responsavel_destino_id, area, motivo } = req.body;
 
       if (!equipamento_id || !evento_id || !responsavel_destino_id) {
         return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
       }
 
+      const equipamentoId = inteiro(equipamento_id);
+      const eventoId = inteiro(evento_id);
+      const destinoId = inteiro(responsavel_destino_id);
+      if (equipamentoId === null || eventoId === null || destinoId === null) {
+        return res.status(400).json({ error: 'equipamento_id, evento_id e responsavel_destino_id devem ser números inteiros' });
+      }
+
+      if (informado(area) && !AREAS.includes(area)) {
+        return res.status(400).json({ error: `Área inválida. Opções: ${AREAS.join(', ')}` });
+      }
+
+      const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [eventoId]);
+      if (!evento) {
+        return res.status(404).json({ error: 'Evento não encontrado' });
+      }
+
+      if (!eventoAtivo(evento)) {
+        return res.status(400).json({ error: 'O evento já foi encerrado' });
+      }
+
       // Verificar se equipamento está no evento
       const equipamentoEvento = await getAsync(
-        'SELECT * FROM equipamentos_evento WHERE equipamento_id = ? AND evento_id = ?',
-        [equipamento_id, evento_id]
+        `SELECT * FROM equipamentos_evento
+         WHERE equipamento_id = ? AND evento_id = ? AND status != 'devolvido'`,
+        [equipamentoId, eventoId]
       );
 
       if (!equipamentoEvento) {
         return res.status(404).json({ error: 'Equipamento não encontrado neste evento' });
       }
 
+      // Quem pode passar o equipamento adiante: o responsável atual ou a equipe do evento
+      // (coordenadores, criador e responsáveis cadastrados). O servidor não confia no
+      // "responsável de origem" enviado pelo cliente: a origem é sempre a real.
+      const ehResponsavelAtual = equipamentoEvento.responsavel_id === req.user.id;
+      if (!ehResponsavelAtual && !(await ehEquipeDoEvento(req.user, evento))) {
+        return res.status(403).json({ error: 'Sem permissão para transferir este equipamento' });
+      }
+
+      const origemId = equipamentoEvento.responsavel_id || req.user.id;
+
+      if (destinoId === equipamentoEvento.responsavel_id) {
+        return res.status(400).json({ error: 'O equipamento já está com este responsável' });
+      }
+
+      if (!(await buscarUsuarioAtivo(destinoId))) {
+        return res.status(400).json({ error: 'Responsável de destino não encontrado' });
+      }
+
       // Atualizar responsável do equipamento no evento
       await runAsync(
-        'UPDATE equipamentos_evento SET responsavel_id = ?, area = ? WHERE equipamento_id = ? AND evento_id = ?',
-        [responsavel_destino_id, area || equipamentoEvento.area, equipamento_id, evento_id]
+        'UPDATE equipamentos_evento SET responsavel_id = ?, area = ? WHERE id = ?',
+        [destinoId, area || equipamentoEvento.area, equipamentoEvento.id]
       );
 
       // Registrar transferência no sistema (já concluída, sem fluxo de aprovação)
@@ -351,19 +592,29 @@ const transferenciasController = {
         `INSERT INTO transferencias
          (equipamento_id, origem_tipo, origem_id, destino_tipo, destino_id,
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
-          status, motivo, aprovacao_coordenador, aprovacao_entrega, aprovacao_recebimento)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1)`,
-        [equipamento_id, 'usuario', responsavel_origem_id || req.user.id, 'usuario', responsavel_destino_id,
-         req.user.id, req.user.id, responsavel_destino_id,
+          status, motivo, aprovacao_coordenador, aprovacao_entrega, aprovacao_recebimento,
+          data_conclusao)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, CURRENT_TIMESTAMP)`,
+        [equipamentoId, 'usuario', origemId, 'usuario', destinoId,
+         req.user.id, origemId, destinoId,
          'concluida', motivo || 'Transferência entre responsáveis no mesmo evento']
       );
 
+      await registrarMovimentacao({
+        equipamentoId,
+        tipo: 'transferencia_responsavel',
+        origem: `usuario: ${origemId}`,
+        destino: `usuario: ${destinoId}`,
+        usuarioId: req.user.id,
+        observacoes: `Evento "${evento.nome}": responsável alterado`
+      });
+
       // Notificar o novo responsável
       await criarNotificacao(
-        responsavel_destino_id,
+        destinoId,
         'equipamento_recebido',
         'Equipamento transferido para você',
-        `Você agora é responsável pelo equipamento #${equipamento_id} no evento #${evento_id}.`,
+        `Você agora é responsável pelo equipamento #${equipamentoId} no evento "${evento.nome}".`,
         '/transferencias'
       );
 
@@ -380,25 +631,28 @@ const transferenciasController = {
   // Transferência entre eventos simultâneos
   async transferirEntreEventos(req, res) {
     try {
-      const {
-        equipamento_id,
-        evento_origem_id,
-        evento_destino_id,
-        responsavel_entrega_id,
-        responsavel_recebimento_id,
-        coordenador_id,
-        motivo,
-        observacoes
-      } = req.body;
+      const { equipamento_id, evento_origem_id, evento_destino_id, motivo, observacoes } = req.body;
 
       if (!equipamento_id || !evento_origem_id || !evento_destino_id) {
         return res.status(400).json({ error: 'Equipamento e eventos de origem/destino são obrigatórios' });
       }
 
+      const equipamentoId = inteiro(equipamento_id);
+      const origemId = inteiro(evento_origem_id);
+      const destinoId = inteiro(evento_destino_id);
+      if (equipamentoId === null || origemId === null || destinoId === null) {
+        return res.status(400).json({ error: 'Os ids devem ser números inteiros' });
+      }
+
+      if (origemId === destinoId) {
+        return res.status(400).json({ error: 'Os eventos de origem e destino devem ser diferentes' });
+      }
+
       // Verificar se equipamento está no evento de origem
       const equipamentoEventoOrigem = await getAsync(
-        'SELECT * FROM equipamentos_evento WHERE equipamento_id = ? AND evento_id = ?',
-        [equipamento_id, evento_origem_id]
+        `SELECT * FROM equipamentos_evento
+         WHERE equipamento_id = ? AND evento_id = ? AND status != 'devolvido'`,
+        [equipamentoId, origemId]
       );
 
       if (!equipamentoEventoOrigem) {
@@ -406,15 +660,11 @@ const transferenciasController = {
       }
 
       // Verificar se ambos os eventos existem e estão em andamento ou aprovados
-      const eventoOrigem = await getAsync(
-        'SELECT * FROM eventos WHERE id = ? AND status IN (?, ?)',
-        [evento_origem_id, 'em_andamento', 'aprovado']
-      );
-
-      const eventoDestino = await getAsync(
-        'SELECT * FROM eventos WHERE id = ? AND status IN (?, ?)',
-        [evento_destino_id, 'em_andamento', 'aprovado']
-      );
+      const consultaEvento = `SELECT * FROM eventos WHERE id = ? AND status IN (${placeholders(STATUS_EVENTO_TRANSFERIVEL)})`;
+      const [eventoOrigem, eventoDestino] = await Promise.all([
+        getAsync(consultaEvento, [origemId, ...STATUS_EVENTO_TRANSFERIVEL]),
+        getAsync(consultaEvento, [destinoId, ...STATUS_EVENTO_TRANSFERIVEL])
+      ]);
 
       if (!eventoOrigem || !eventoDestino) {
         return res.status(400).json({ error: 'Os eventos precisam estar aprovados ou em andamento' });
@@ -439,6 +689,23 @@ const transferenciasController = {
         });
       }
 
+      // Mesma regra da transferência rápida: quem pede é o responsável atual pelo equipamento
+      // ou a equipe do evento de origem (as aprovações vêm depois, mas não basta estar logado)
+      const ehResponsavelAtual = equipamentoEventoOrigem.responsavel_id === req.user.id;
+      if (!ehResponsavelAtual && !(await ehEquipeDoEvento(req.user, eventoOrigem))) {
+        return res.status(403).json({ error: 'Sem permissão para transferir este equipamento do evento de origem' });
+      }
+
+      const equipamento = await getAsync('SELECT * FROM equipamentos WHERE id = ?', [equipamentoId]);
+      const erroEquipamento = await erroEquipamentoNaoTransferivel(equipamento);
+      if (erroEquipamento) {
+        return res.status(400).json({ error: erroEquipamento });
+      }
+
+      const responsaveis = await lerResponsaveis(req.body);
+      if (responsaveis.erro) return res.status(400).json({ error: responsaveis.erro });
+      const { entregaId, recebimentoId, coordenadorId } = responsaveis;
+
       // Criar transferência com aprovação tripla
       const result = await runAsync(
         `INSERT INTO transferencias
@@ -446,36 +713,29 @@ const transferenciasController = {
           solicitante_id, responsavel_entrega_id, responsavel_recebimento_id,
           coordenador_id, motivo, observacoes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [equipamento_id, 'evento', evento_origem_id, 'evento', evento_destino_id,
-         req.user.id, responsavel_entrega_id || null, responsavel_recebimento_id || null,
-         coordenador_id || null, motivo || 'Transferência urgente entre eventos simultâneos', observacoes || null]
+        [equipamentoId, 'evento', origemId, 'evento', destinoId,
+         req.user.id, entregaId, recebimentoId, coordenadorId,
+         motivo || 'Transferência urgente entre eventos simultâneos', observacoes || null]
       );
 
-      // Atualizar status do equipamento
-      await runAsync(
-        'UPDATE equipamentos SET status = ? WHERE id = ?',
-        ['transferencia', equipamento_id]
-      );
+      await recalcularStatus(equipamentoId);
 
       // Adicionar observação sobre transferência urgente
-      await runAsync(
-        `INSERT INTO historico_movimentacoes
-         (equipamento_id, tipo_movimentacao, origem, destino, usuario_id, observacoes)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [equipamento_id,
-         'transferencia_urgente',
-         `Evento: ${eventoOrigem.nome}`,
-         `Evento: ${eventoDestino.nome}`,
-         req.user.id,
-         'Transferência entre eventos simultâneos']
-      );
+      await registrarMovimentacao({
+        equipamentoId,
+        tipo: 'transferencia_urgente',
+        origem: `Evento: ${eventoOrigem.nome}`,
+        destino: `Evento: ${eventoDestino.nome}`,
+        usuarioId: req.user.id,
+        observacoes: 'Transferência entre eventos simultâneos'
+      });
 
       // Notificar envolvidos na aprovação
       await notificarUsuarios(
-        [coordenador_id, responsavel_entrega_id, responsavel_recebimento_id],
+        [coordenadorId, entregaId, recebimentoId],
         'transferencia_pendente',
         'Transferência urgente entre eventos',
-        `Transferência do equipamento #${equipamento_id} de "${eventoOrigem.nome}" para "${eventoDestino.nome}" aguarda sua aprovação.`,
+        `Transferência do equipamento #${equipamentoId} de "${eventoOrigem.nome}" para "${eventoDestino.nome}" aguarda sua aprovação.`,
         '/transferencias'
       );
 

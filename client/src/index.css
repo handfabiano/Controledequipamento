@@ -150,6 +150,11 @@ code {
   color: #0c5460;
 }
 
+.badge-primary {
+  background: #cfe2ff;
+  color: #084298;
+}
+
 .badge-secondary {
   background-color: #e2e3e5;
   color: #383d41;

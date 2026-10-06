@@ -26,6 +26,9 @@ jobs:
             node --check "$f"
           done
 
+      - name: Testes de integração
+        run: npm test
+
       - name: Smoke test (SQLite)
         run: |
           PORT=3101 node server/index.js &

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import './Transferencias.css';
 
 function Transferencias() {
-  const { user } = useAuth();
+  const { user, isCoordenador } = useAuth();
   const [transferenciasList, setTransferenciasList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -27,14 +27,13 @@ function Transferencias() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [transferResponse, equipResponse] = await Promise.all([
+      const [transferResponse, equipamentosTodos] = await Promise.all([
         transferencias.listar(),
-        equipamentos.listar(),
+        equipamentos.listarTodos(),
       ]);
 
-      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
-      setTransferenciasList(transferResponse.data.data || transferResponse.data);
-      setEquipamentosList(equipResponse.data.data || equipResponse.data);
+      setTransferenciasList(transferResponse.data);
+      setEquipamentosList(equipamentosTodos);
     } catch (error) {
       console.error('Erro ao carregar transferências:', error);
       alert('Erro ao carregar transferências');
@@ -113,14 +112,14 @@ function Transferencias() {
 
     switch (tipo) {
       case 'coordenador':
-        return user?.tipo === 'coordenador' && !transferencia.aprovacao_coordenador;
+        return isCoordenador() && !transferencia.aprovacao_coordenador;
       case 'entrega':
         return (user?.tipo === 'responsavel_entrega' || user?.tipo === 'coordenador') &&
                !transferencia.aprovacao_entrega;
       case 'recebimento':
         return (user?.tipo === 'responsavel_recebimento' || user?.tipo === 'coordenador') &&
                !transferencia.aprovacao_recebimento &&
-               transferencia.aprovacao_entrega;
+               Boolean(transferencia.aprovacao_entrega);
       default:
         return false;
     }
@@ -220,7 +219,8 @@ function Transferencias() {
                         Confirmar Recebimento
                       </button>
                     )}
-                    {trans.status !== 'concluida' && trans.status !== 'cancelada' && (
+                    {trans.status !== 'concluida' && trans.status !== 'cancelada' &&
+                      (isCoordenador() || trans.solicitante_id === user?.id) && (
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleCancelar(trans.id)}

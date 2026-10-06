@@ -1,4 +1,5 @@
 const { body, query, param, validationResult } = require('express-validator');
+const { STATUS_EQUIPAMENTO } = require('../services/equipamentoStatus');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -11,30 +12,32 @@ const validate = (req, res, next) => {
   next();
 };
 
+// Filtros vazios (?status=&search=) são o que a tela de Equipamentos envia quando nenhum
+// filtro está ativo; devem ser ignorados, não rejeitados com 400.
 const listarEquipamentos = [
   query('page')
-    .optional()
+    .optional({ values: 'falsy' })
     .isInt({ min: 1 }).withMessage('Página deve ser um número inteiro maior que 0'),
 
   query('limit')
-    .optional()
+    .optional({ values: 'falsy' })
     .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser entre 1 e 100'),
 
   query('status')
-    .optional()
-    .isIn(['disponivel', 'em_uso', 'manutencao', 'com_problema', 'transferencia'])
+    .optional({ values: 'falsy' })
+    .isIn(STATUS_EQUIPAMENTO)
     .withMessage('Status inválido'),
 
   query('categoria_id')
-    .optional()
+    .optional({ values: 'falsy' })
     .isInt({ min: 1 }).withMessage('ID da categoria deve ser um número inteiro positivo'),
 
   query('deposito_id')
-    .optional()
+    .optional({ values: 'falsy' })
     .isInt({ min: 1 }).withMessage('ID do depósito deve ser um número inteiro positivo'),
 
   query('search')
-    .optional()
+    .optional({ values: 'falsy' })
     .trim()
     .isLength({ min: 1, max: 100 }).withMessage('Busca deve ter entre 1 e 100 caracteres'),
 
@@ -125,7 +128,7 @@ const atualizarEquipamento = [
 
   body('status')
     .optional()
-    .isIn(['disponivel', 'em_uso', 'manutencao', 'com_problema', 'transferencia'])
+    .isIn(STATUS_EQUIPAMENTO)
     .withMessage('Status inválido'),
 
   body('condicao')

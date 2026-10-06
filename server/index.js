@@ -5,9 +5,20 @@ const bodyParser = require('body-parser');
 const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
-const { corsOrigins } = require('./config');
+const { corsOrigins, trustProxy } = require('./config');
 
 const app = express();
+
+// IP real do cliente atrás de proxy (necessário para o rate limit funcionar por usuário)
+try {
+  app.set('trust proxy', trustProxy);
+} catch (error) {
+  throw new Error(
+    `TRUST_PROXY inválido (${JSON.stringify(trustProxy)}): use um número de proxies (ex.: 1), ` +
+    `"loopback"/"uniquelocal" ou uma lista de IPs/sub-redes. ${error.message}`
+  );
+}
+
 const PORT = process.env.PORT || 3001;
 
 // Inicializar banco de dados (necessário para ambos os ambientes)
@@ -29,10 +40,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // Middleware para garantir que o banco está inicializado ANTES de processar requisições
 app.use(async (req, res, next) => {
@@ -67,6 +80,14 @@ app.use((req, res, next) => {
 
 // Error handling
 app.use((err, req, res, next) => {
+  // JSON malformado ou corpo grande demais são erros do cliente, não do servidor
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido no corpo da requisição' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Corpo da requisição grande demais' });
+  }
+
   console.error('Erro não tratado:', err);
   res.status(500).json({ error: 'Erro interno do servidor' });
 });

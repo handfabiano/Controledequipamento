@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { equipamentos, transferencias, eventos } from '../services/api';
+import { dashboard } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
@@ -10,6 +10,8 @@ function Dashboard() {
     equipamentosDisponiveis: 0,
     equipamentosEmUso: 0,
     equipamentosComProblema: 0,
+    equipamentosEmTransferencia: 0,
+    equipamentosEmManutencao: 0,
     transferenciaPendentes: 0,
     eventosAtivos: 0,
   });
@@ -24,55 +26,22 @@ function Dashboard() {
     try {
       setLoading(true);
 
-      const [equipResponse, transferenciaResponse, eventoResponse] = await Promise.all([
-        equipamentos.listar(),
-        transferencias.listar(),
-        eventos.listar({ status: 'em_andamento' }),
-      ]);
-
-      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
-      const equips = equipResponse.data.data || equipResponse.data;
-      const transferList = transferenciaResponse.data.data || transferenciaResponse.data;
-      const eventosList = eventoResponse.data.data || eventoResponse.data;
+      // Os números vêm calculados no servidor: a listagem de equipamentos é paginada
+      // e contar no cliente ignorava tudo além da primeira página.
+      const { data } = await dashboard.resumo();
 
       setStats({
-        totalEquipamentos: equips.length,
-        equipamentosDisponiveis: equips.filter(e => e.status === 'disponivel').length,
-        equipamentosEmUso: equips.filter(e => e.status === 'em_uso').length,
-        equipamentosComProblema: equips.filter(e => e.status === 'com_problema').length,
-        transferenciaPendentes: transferList.filter(t => t.status === 'pendente').length,
-        eventosAtivos: eventosList.length,
+        totalEquipamentos: data.equipamentos.total,
+        equipamentosDisponiveis: data.equipamentos.disponivel,
+        equipamentosEmUso: data.equipamentos.em_uso,
+        equipamentosComProblema: data.equipamentos.com_problema,
+        equipamentosEmTransferencia: data.equipamentos.transferencia,
+        equipamentosEmManutencao: data.equipamentos.manutencao,
+        transferenciaPendentes: data.transferencias_pendentes,
+        eventosAtivos: data.eventos_ativos,
       });
 
-      // Atividades recentes
-      const activities = [];
-
-      // Transferências pendentes
-      transferList
-        .filter(t => t.status === 'pendente' || t.status === 'aprovada_coordenador')
-        .slice(0, 5)
-        .forEach(t => {
-          activities.push({
-            tipo: 'transferencia',
-            descricao: `Transferência de ${t.equipamento_nome} - ${t.status}`,
-            data: t.data_solicitacao,
-          });
-        });
-
-      // Equipamentos com problema
-      equips
-        .filter(e => e.problemas_ativos && e.problemas_ativos.length > 0)
-        .slice(0, 5)
-        .forEach(e => {
-          activities.push({
-            tipo: 'problema',
-            descricao: `${e.codigo} - ${e.nome} com problema reportado`,
-            data: e.problemas_ativos[0].data_relato,
-          });
-        });
-
-      setRecentActivity(activities.sort((a, b) => new Date(b.data) - new Date(a.data)).slice(0, 10));
-
+      setRecentActivity(data.atividades);
     } catch (error) {
       console.error('Erro ao carregar dashboard:', error);
     } finally {
@@ -110,6 +79,16 @@ function Dashboard() {
         <div className="stat-card" style={{ background: 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)' }}>
           <p>Com Problema</p>
           <h3>{stats.equipamentosComProblema}</h3>
+        </div>
+
+        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%)' }}>
+          <p>Em Transferência</p>
+          <h3>{stats.equipamentosEmTransferencia}</h3>
+        </div>
+
+        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #6c757d 0%, #495057 100%)' }}>
+          <p>Em Manutenção</p>
+          <h3>{stats.equipamentosEmManutencao}</h3>
         </div>
 
         <div className="stat-card" style={{ background: 'linear-gradient(135deg, #17a2b8 0%, #138496 100%)' }}>
