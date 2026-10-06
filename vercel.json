@@ -36,7 +36,13 @@
     },
     {
       "src": "/(.*)",
-      "dest": "client/build/index.html"
+      "dest": "client/build/index.html",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "camera=(self), microphone=(), geolocation=(), payment=()"
+      }
     }
   ],
   "env": {

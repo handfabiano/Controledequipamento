@@ -286,6 +286,9 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 - Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP
   real exige `TRUST_PROXY` (padrão: 1 hop na Vercel)
 - HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy
+- Cabeçalhos de segurança (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`,
+  `Cache-Control: no-store` na API, HSTS em produção) e `X-Powered-By` desligado; o SPA recebe os
+  mesmos cabeçalhos pelo `vercel.json`
 - Log de segurança em JSON, uma linha por evento (`login_sucesso`, `login_falha`, `usuario_criado`,
   `acesso_negado` para 401/403/429), sem senhas, tokens nem query string (`server/services/seguranca.js`);
   na Vercel aparece nos logs da função
