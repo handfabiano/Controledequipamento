@@ -9,12 +9,7 @@ let tecnico2; // sem relação com os eventos criados
 test.before(async () => {
   srv = await iniciarServidor();
   t = await srv.tokens();
-  const reg = await srv.req('POST', '/api/auth/register', {
-    token: t.coordenador,
-    body: { nome: 'Técnico Dois', email: 'tecnico2@sistema.com', senha: '123456', tipo: 'tecnico' }
-  });
-  assert.strictEqual(reg.status, 201);
-  tecnico2 = await srv.login('tecnico2@sistema.com');
+  ({ token: tecnico2 } = await srv.criarUsuario({ nome: 'Técnico Dois', email: 'tecnico2@sistema.com' }, t.coordenador));
 });
 test.after(() => srv.fechar());
 

@@ -10,4 +10,7 @@ const inteiro = (valor) => {
   return Number.isInteger(n) ? n : null;
 };
 
-module.exports = { informado, inteiro };
+// E-mails são comparados sem diferenciar maiúsculas/minúsculas e sem espaços nas pontas
+const normalizarEmail = (email) => email.trim().toLowerCase();
+
+module.exports = { informado, inteiro, normalizarEmail };

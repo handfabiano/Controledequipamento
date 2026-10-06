@@ -16,7 +16,11 @@ delete process.env.DATABASE_URL;
 delete process.env.TRUST_PROXY;
 delete process.env.VERCEL;
 
-// Usuários criados pelo seed (senha: 123456)
+// Senha dos usuários do seed e uma senha que cumpre a política de novas senhas
+const SENHA_SEED = '123456';
+const SENHA_VALIDA = 'senha-segura-9';
+
+// Usuários criados pelo seed (senha: SENHA_SEED)
 const USUARIOS = {
   coordenador: { id: 1, email: 'coordenador@sistema.com' },
   entrega: { id: 2, email: 'joao@sistema.com' },
@@ -51,10 +55,20 @@ async function iniciarServidor() {
     return { status: resposta.status, body: json, text: texto, headers: resposta.headers };
   }
 
-  async function login(email, senha = '123456') {
+  async function login(email, senha = SENHA_SEED) {
     const r = await req('POST', '/api/auth/login', { body: { email, senha } });
     if (r.status !== 200) throw new Error(`Login falhou para ${email}: ${r.status} ${r.text}`);
     return r.body.token;
+  }
+
+  // Cadastra um usuário (como coordenador) e devolve { id, token } do novo usuário
+  async function criarUsuario({ nome, email, tipo = 'tecnico' }, tokenCoordenador) {
+    const r = await req('POST', '/api/auth/register', {
+      token: tokenCoordenador,
+      body: { nome, email, senha: SENHA_VALIDA, tipo }
+    });
+    if (r.status !== 201) throw new Error(`Cadastro falhou para ${email}: ${r.status} ${r.text}`);
+    return { id: r.body.id, token: await login(email, SENHA_VALIDA) };
   }
 
   // Devolve { coordenador, entrega, recebimento, tecnico } => token
@@ -71,7 +85,7 @@ async function iniciarServidor() {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  return { base, req, login, tokens, fechar };
+  return { base, req, login, criarUsuario, tokens, fechar };
 }
 
-module.exports = { iniciarServidor, USUARIOS };
+module.exports = { iniciarServidor, USUARIOS, SENHA_SEED, SENHA_VALIDA };

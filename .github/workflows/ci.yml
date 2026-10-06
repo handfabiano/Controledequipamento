@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# O CI só lê o código; sem isto o GITHUB_TOKEN herda as permissões padrão do repositório
+permissions:
+  contents: read
+
 jobs:
   server:
     name: Backend (sintaxe + smoke test)

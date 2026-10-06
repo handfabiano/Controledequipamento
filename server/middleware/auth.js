@@ -1,16 +1,14 @@
-const jwt = require('jsonwebtoken');
-const { jwtSecret } = require('../config');
+const { verificar, tokenDaRequisicao } = require('../services/token');
 
 const authMiddleware = (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const token = tokenDaRequisicao(req);
 
     if (!token) {
       return res.status(401).json({ error: 'Token não fornecido' });
     }
 
-    const decoded = jwt.verify(token, jwtSecret);
-    req.user = decoded;
+    req.user = verificar(token);
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Token inválido' });

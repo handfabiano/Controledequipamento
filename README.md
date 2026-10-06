@@ -279,12 +279,18 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 ## Segurança
 
 - Autenticação via JWT; e-mails comparados sem diferenciar maiúsculas/minúsculas
-- Senhas criptografadas com bcrypt
+- Senhas criptografadas com bcrypt; novas senhas: mínimo de 8 caracteres (máx. 72 bytes) e sem senhas
+  comuns/previsíveis (`server/services/senhas.js`)
 - Middleware de autenticação em todas as rotas protegidas
 - Autorização no servidor por perfil e por envolvimento (transferências, eventos)
 - Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP
   real exige `TRUST_PROXY` (padrão: 1 hop na Vercel)
 - HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy
+- Cabeçalhos de segurança na API (`server/middleware/cabecalhos.js`) e no SPA (rota catch-all do
+  `vercel.json`); `X-Powered-By` desligado
+- Log de segurança em JSON, uma linha por evento (`server/services/seguranca.js`): `login_sucesso`,
+  `login_falha`, `usuario_criado` e `acesso_negado` (401/403/429). Sem senhas, tokens nem query string;
+  na Vercel aparece nos logs da função
 
 ## Testes
 

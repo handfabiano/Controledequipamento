@@ -1,12 +1,10 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
-const { jwtSecret } = require('../config');
+const { validarSenha, hashSenha, compararSenha } = require('../services/senhas');
+const { registrar, registrarNegacao } = require('../services/seguranca');
+const { assinar, verificar, tokenDaRequisicao } = require('../services/token');
+const { normalizarEmail } = require('../services/validacao');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// E-mails são comparados sem diferenciar maiúsculas/minúsculas e sem espaços nas pontas
-const normalizarEmail = (email) => email.trim().toLowerCase();
 
 const authController = {
   async login(req, res) {
@@ -21,26 +19,29 @@ const authController = {
         return res.status(400).json({ error: 'Email e senha devem ser texto' });
       }
 
+      const emailNormalizado = normalizarEmail(email);
+
       const usuario = await getAsync(
         'SELECT * FROM usuarios WHERE LOWER(email) = ? AND ativo = 1',
-        [normalizarEmail(email)]
+        [emailNormalizado]
       );
 
-      if (!usuario) {
+      // Sem usuário a comparação roda mesmo assim (contra um hash fictício): o tempo de resposta
+      // não pode revelar quais e-mails existem.
+      const senhaValida = await compararSenha(senha, usuario?.senha);
+
+      if (!usuario || !senhaValida) {
+        registrarNegacao(res, 'login_falha', {
+          email: emailNormalizado,
+          motivo: usuario ? 'senha_incorreta' : 'usuario_inexistente',
+          ip: req.ip
+        });
         return res.status(401).json({ error: 'Credenciais inválidas' });
       }
 
-      const senhaValida = await bcrypt.compare(senha, usuario.senha);
+      const token = assinar({ id: usuario.id, email: usuario.email, tipo: usuario.tipo });
 
-      if (!senhaValida) {
-        return res.status(401).json({ error: 'Credenciais inválidas' });
-      }
-
-      const token = jwt.sign(
-        { id: usuario.id, email: usuario.email, tipo: usuario.tipo },
-        jwtSecret,
-        { expiresIn: '24h' }
-      );
+      registrar('login_sucesso', { usuario_id: usuario.id, ip: req.ip });
 
       // Não retornar a senha
       delete usuario.senha;
@@ -77,8 +78,11 @@ const authController = {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
       }
 
-      if (senha.length < 6) {
-        return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres' });
+      const emailNormalizado = normalizarEmail(email);
+
+      const erroSenha = validarSenha(senha, emailNormalizado);
+      if (erroSenha) {
+        return res.status(400).json({ error: erroSenha });
       }
 
       // Cadastro aberto apenas para o primeiro usuário (bootstrap do sistema).
@@ -86,7 +90,7 @@ const authController = {
       const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
 
       if (userCount.count > 0) {
-        const token = req.headers.authorization?.split(' ')[1];
+        const token = tokenDaRequisicao(req);
 
         if (!token) {
           return res.status(401).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
@@ -94,17 +98,16 @@ const authController = {
 
         let decoded;
         try {
-          decoded = jwt.verify(token, jwtSecret);
+          decoded = verificar(token);
         } catch (err) {
           return res.status(401).json({ error: 'Token inválido' });
         }
 
+        req.user = decoded; // para o registro de segurança saber quem tentou
         if (decoded.tipo !== 'coordenador') {
           return res.status(403).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
         }
       }
-
-      const emailNormalizado = normalizarEmail(email);
 
       const usuarioExiste = await getAsync(
         'SELECT id FROM usuarios WHERE LOWER(email) = ?',
@@ -115,12 +118,19 @@ const authController = {
         return res.status(400).json({ error: 'Email já cadastrado' });
       }
 
-      const senhaHash = await bcrypt.hash(senha, 10);
+      const senhaHash = await hashSenha(senha);
 
       const result = await runAsync(
         'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',
         [nome.trim(), emailNormalizado, senhaHash, tipo]
       );
+
+      registrar('usuario_criado', {
+        usuario_id: result.lastID,
+        tipo,
+        criado_por: req.user?.id ?? null, // null = cadastro inicial (bootstrap)
+        ip: req.ip
+      });
 
       res.status(201).json({
         message: 'Usuário registrado com sucesso',

@@ -59,3 +59,22 @@ test('limites de requisição: padrões e valores inválidos', () => {
   assert.strictEqual(invalido.rateLimitMax, 300);
   assert.strictEqual(invalido.loginRateLimitMax, 5);
 });
+
+test('sem JWT_SECRET fora de produção usa chave aleatória por processo, nunca uma fixa', () => {
+  const a = lerConfig({ JWT_SECRET: '' }).jwtSecret;
+  const b = lerConfig({ JWT_SECRET: '' }).jwtSecret;
+
+  assert.match(a, /^[0-9a-f]{64}$/, 'esperada chave aleatória de 32 bytes em hexadecimal');
+  assert.notStrictEqual(a, b, 'cada processo deve gerar uma chave diferente');
+});
+
+test('JWT_SECRET definido é usado como está', () => {
+  assert.strictEqual(lerConfig({ JWT_SECRET: 'segredo-do-ambiente' }).jwtSecret, 'segredo-do-ambiente');
+});
+
+test('em produção sem JWT_SECRET o servidor não sobe', () => {
+  assert.throws(
+    () => lerConfig({ JWT_SECRET: '', NODE_ENV: 'production' }),
+    /JWT_SECRET/
+  );
+});

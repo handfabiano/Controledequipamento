@@ -6,8 +6,13 @@ const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
 const { corsOrigins, trustProxy } = require('./config');
+const { registrarAcessosNegados } = require('./services/seguranca');
+const { cabecalhosDeSeguranca } = require('./middleware/cabecalhos');
 
 const app = express();
+
+// Não anunciar qual framework/versão atende (facilita busca por vulnerabilidades conhecidas)
+app.disable('x-powered-by');
 
 // IP real do cliente atrás de proxy (necessário para o rate limit funcionar por usuário)
 try {
@@ -36,6 +41,8 @@ async function ensureDatabase() {
 // Middleware
 // Se CORS_ORIGIN estiver definido, restringe às origens listadas; senão aceita todas
 app.use(cors(corsOrigins ? { origin: corsOrigins } : {}));
+app.use(cabecalhosDeSeguranca());
+app.use(registrarAcessosNegados);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 

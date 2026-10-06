@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const bcrypt = require('bcryptjs');
+const { hashSenha } = require('../services/senhas');
 const { usePostgres, runAsync, getAsync, allAsync, placeholders } = require('./db');
 
 // Seed de demonstração: ativo por padrão fora de produção,
@@ -67,7 +67,7 @@ async function gerarCodigo(prefixo) {
 }
 
 async function insertInitialData() {
-  const senhaHash = await bcrypt.hash('123456', 10);
+  const senhaHash = await hashSenha('123456');
 
   // Usuários
   await runAsync(`

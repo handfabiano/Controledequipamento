@@ -1,9 +1,13 @@
 // Configurações sensíveis centralizadas.
-// Em produção, JWT_SECRET é obrigatório — sem fallback hardcoded.
+// Em produção, JWT_SECRET é obrigatório. Fora dela, sem JWT_SECRET, a chave é aleatória
+// por processo: NÃO existe chave fixa no código (uma chave pública permitiria forjar tokens
+// de qualquer usuário em quem subisse o servidor sem NODE_ENV=production).
+
+const crypto = require('crypto');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-const jwtSecret = process.env.JWT_SECRET;
+let jwtSecret = process.env.JWT_SECRET;
 
 if (!jwtSecret && isProduction) {
   throw new Error(
@@ -12,7 +16,11 @@ if (!jwtSecret && isProduction) {
 }
 
 if (!jwtSecret) {
-  console.warn('AVISO: JWT_SECRET não definido — usando chave de desenvolvimento. NÃO use em produção.');
+  jwtSecret = crypto.randomBytes(32).toString('hex');
+  console.warn(
+    'AVISO: JWT_SECRET não definido — usando uma chave aleatória temporária; os tokens deixam de valer ' +
+    'quando o servidor reinicia. Defina JWT_SECRET (obrigatório em produção).'
+  );
 }
 
 // Origens permitidas para CORS: lista separada por vírgula em CORS_ORIGIN.
@@ -53,7 +61,7 @@ const loginRateLimitMax = inteiroPositivo(process.env.LOGIN_RATE_LIMIT_MAX, 5);
 
 module.exports = {
   isProduction,
-  jwtSecret: jwtSecret || 'dev_secret_apenas_para_desenvolvimento',
+  jwtSecret,
   corsOrigins,
   trustProxy,
   rateLimitMax,
