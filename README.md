@@ -183,6 +183,8 @@ Esporte/
 - `POST /api/equipamentos/:id/problemas` - Reportar problema
 - `PUT /api/equipamentos/:id/problemas/:problemaId/resolver` - Resolver problema
 - `GET /api/equipamentos/categorias` - Listar categorias
+- `GET /api/equipamentos/:id/qrcode` - QR Code do equipamento (tombamento)
+- `GET /api/equipamentos/:id/etiqueta` - Etiqueta HTML para impressão
 
 ### Transferências
 - `GET /api/transferencias` - Listar transferências
@@ -190,7 +192,8 @@ Esporte/
 - `POST /api/transferencias` - Criar transferência
 - `POST /api/transferencias/:id/aprovar` - Aprovar transferência
 - `POST /api/transferencias/:id/cancelar` - Cancelar transferência
-- `POST /api/transferencias/rapida` - Transferência rápida entre responsáveis
+- `POST /api/transferencias/rapida` - Transferência rápida entre responsáveis (mesmo evento)
+- `POST /api/transferencias/entre-eventos` - Transferência entre eventos simultâneos
 
 ### Eventos
 - `GET /api/eventos` - Listar eventos
@@ -201,6 +204,9 @@ Esporte/
 - `PUT /api/eventos/:id/status` - Atualizar status do evento
 - `GET /api/eventos/templates` - Listar templates de eventos
 
+### Dashboard
+- `GET /api/dashboard/resumo` - Contagens de equipamentos por status, transferências pendentes, eventos ativos e atividades recentes (calculado no banco)
+
 ### Notificações
 - `GET /api/notificacoes` - Listar minhas notificações
 - `GET /api/notificacoes/nao-lidas/count` - Contador de não lidas
@@ -209,49 +215,49 @@ Esporte/
 
 ## Fluxos de Trabalho
 
+### Status do equipamento
+
+O status é **derivado** pelo sistema (ver `server/services/equipamentoStatus.js`), nunca
+sobrescrito "na mão" pelos fluxos. Prioridade:
+
+1. problema grave (alta/crítica) não resolvido → `com_problema`
+2. transferência em andamento → `transferencia`
+3. alocado em evento planejado/aprovado/em andamento → `em_uso`
+4. caso contrário → `disponivel`
+
+`manutencao` é a única definição manual (via `PUT /api/equipamentos/:id`) e nunca é
+sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
+
 ### Fluxo de Transferência
 
-1. **Solicitação:**
-   - Usuário cria uma nova transferência
-   - Equipamento muda status para "transferência"
-
-2. **Aprovação do Coordenador:**
-   - Coordenador revisa e aprova
-   - Status muda para "aprovada_coordenador"
-
-3. **Confirmação de Entrega:**
-   - Responsável pela entrega confirma a retirada
-   - Status muda para "em_transito"
-
-4. **Confirmação de Recebimento:**
-   - Responsável pelo recebimento confirma
-   - Status muda para "concluida"
-   - Equipamento atualiza localização
+1. **Solicitação:** qualquer usuário solicita; o equipamento passa a `transferencia`.
+   Um equipamento só pode ter uma transferência ativa por vez.
+2. **Três aprovações, em qualquer ordem** (exceto: o recebimento exige a entrega antes):
+   - **Coordenador** (`aprovada_coordenador`)
+   - **Responsável pela entrega** (com o coordenador também aprovado → `em_transito`)
+   - **Responsável pelo recebimento**
+3. **Conclusão:** quando as três estão dadas, em qualquer ordem, a transferência vai para
+   `concluida`, o equipamento muda de depósito e o histórico é registrado.
+4. **Quem aprova:** com responsável designado, só ele; sem designado (o caso da tela de
+   solicitação), o perfil correspondente (`responsavel_entrega`/`responsavel_recebimento`)
+   ou um coordenador. Cada etapa só pode ser aprovada uma vez.
+5. **Quem vê:** coordenadores veem todas; os demais veem as em que estão envolvidos, e os
+   responsáveis de entrega/recebimento também as que ainda não têm responsável designado.
+6. **Cancelar:** coordenador ou solicitante; devolve ao equipamento o status real.
 
 ### Fluxo de Evento com Checklist
 
-1. **Criação do Evento:**
-   - Selecionar template (opcional)
-   - Definir datas e local
-   - Adicionar responsáveis
-
-2. **Adição de Equipamentos:**
-   - Selecionar equipamentos disponíveis
-   - Alocar por área (som, iluminação, etc.)
-   - Definir responsável por cada equipamento
-
-3. **Validação do Checklist:**
-   - Sistema verifica se todos os itens obrigatórios estão presentes
-   - Mostra avisos sobre itens faltantes
-   - Previne aprovação se faltar itens obrigatórios
-
-4. **Aprovação:**
-   - Coordenador aprova o evento
-   - Equipamentos mudam status para "em_uso"
-
-5. **Execução e Conclusão:**
-   - Status muda conforme andamento
-   - Ao concluir, equipamentos retornam ao depósito
+1. **Criação:** template (opcional), datas (fim ≥ início), local e responsáveis.
+2. **Alocação de equipamentos:** só a equipe do evento (coordenadores, criador e
+   responsáveis cadastrados). O lote inteiro é validado antes de gravar: precisam estar
+   `disponivel` (não aceita manutenção, com problema, em transferência ou em outro evento).
+3. **Checklist:** `GET /api/eventos/:id/validar-checklist` mostra o que falta; a aprovação
+   é recusada enquanto faltarem itens obrigatórios do template.
+4. **Status** (`PUT /api/eventos/:id/status`): `planejamento → aprovado → em_andamento →
+   concluido`, com `cancelado` possível antes do fim. Só coordenadores aprovam, iniciam e
+   concluem; coordenador **ou o criador** pode cancelar. `concluido` e `cancelado` são finais.
+5. **Encerramento:** ao concluir ou cancelar, as alocações são devolvidas e cada equipamento
+   volta ao status real (disponível, com problema, em transferência ou manutenção).
 
 ## Banco de Dados
 
@@ -272,10 +278,22 @@ Esporte/
 
 ## Segurança
 
-- Autenticação via JWT
+- Autenticação via JWT; e-mails comparados sem diferenciar maiúsculas/minúsculas
 - Senhas criptografadas com bcrypt
 - Middleware de autenticação em todas as rotas protegidas
-- Controle de permissões por tipo de usuário
+- Autorização no servidor por perfil e por envolvimento (transferências, eventos)
+- Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP
+  real exige `TRUST_PROXY` (padrão: 1 hop na Vercel)
+- HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy
+
+## Testes
+
+```bash
+npm test    # testes de integração do backend (node:test, SQLite temporário, sem dependências extras)
+```
+
+Cobrem autenticação, equipamentos, transferências, eventos, dashboard e configuração.
+O CI roda `npm test` e o build do frontend a cada push/PR.
 
 ## Próximos Passos / Melhorias Futuras
 
