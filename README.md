@@ -317,6 +317,19 @@ e skills disponíveis que se aplicam** (`code-review`, `simplify`, `security-rev
 `run`, `session-start-hook`, etc.), além dos comandos, convenções e do checklist de
 validação do projeto (`npm test` + build do client).
 
+### Plugin `sempre-skills`
+
+Para não depender só do `CLAUDE.md`, o repositório traz o plugin
+[`plugins/sempre-skills`](./plugins/sempre-skills), que acrescenta essa regra ao prompt de
+sistema de toda sessão (hook `prompt.compose`). Instalação, num terminal do Claude Code
+(depois que esta branch for para a branch padrão do repositório):
+
+```
+/plugin install sempre-skills --marketplace handfabiano/Controledequipamento
+```
+
+Testes do plugin: `claude plugin test plugins/sempre-skills`.
+
 ## Suporte
 
 Para dúvidas ou problemas, entre em contato ou abra uma issue no repositório.

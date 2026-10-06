@@ -1,0 +1,12 @@
+{
+  "name": "controle-equipamentos",
+  "owner": { "name": "handfabiano" },
+  "description": "Plugins do projeto Controle de Equipamentos para o Claude Code.",
+  "plugins": [
+    {
+      "name": "sempre-skills",
+      "source": "./plugins/sempre-skills",
+      "description": "Faz cumprir a regra: no início de toda tarefa, inventariar e invocar todas as skills e plugins aplicáveis."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "sempre-skills",
+  "version": "0.1.0",
+  "description": "Faz cumprir a regra: no início de toda tarefa, inventariar e invocar todas as skills e plugins aplicáveis.",
+  "author": { "name": "handfabiano" }
+}
