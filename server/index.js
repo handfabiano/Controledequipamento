@@ -6,6 +6,7 @@ const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
 const { corsOrigins, trustProxy } = require('./config');
+const { registrarAcessosNegados } = require('./services/seguranca');
 
 const app = express();
 
@@ -36,6 +37,7 @@ async function ensureDatabase() {
 // Middleware
 // Se CORS_ORIGIN estiver definido, restringe às origens listadas; senão aceita todas
 app.use(cors(corsOrigins ? { origin: corsOrigins } : {}));
+app.use(registrarAcessosNegados);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 

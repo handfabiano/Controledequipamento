@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
 const { jwtSecret, jwtAlgorithm } = require('../config');
 const { validarSenha } = require('../services/senhas');
+const { registrar } = require('../services/seguranca');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -36,6 +37,12 @@ const authController = {
       const senhaValida = await bcrypt.compare(senha, usuario ? usuario.senha : await hashFicticio);
 
       if (!usuario || !senhaValida) {
+        registrar('login_falha', {
+          email: normalizarEmail(email),
+          motivo: usuario ? 'senha_incorreta' : 'usuario_inexistente',
+          ip: req.ip
+        });
+        res.locals.negacaoRegistrada = true;
         return res.status(401).json({ error: 'Credenciais inválidas' });
       }
 
@@ -44,6 +51,8 @@ const authController = {
         jwtSecret,
         { algorithm: jwtAlgorithm, expiresIn: '24h' }
       );
+
+      registrar('login_sucesso', { usuario_id: usuario.id, ip: req.ip });
 
       // Não retornar a senha
       delete usuario.senha;
@@ -103,6 +112,7 @@ const authController = {
           return res.status(401).json({ error: 'Token inválido' });
         }
 
+        req.user = decoded; // para o registro de segurança saber quem tentou
         if (decoded.tipo !== 'coordenador') {
           return res.status(403).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
         }
@@ -125,6 +135,13 @@ const authController = {
         'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',
         [nome.trim(), emailNormalizado, senhaHash, tipo]
       );
+
+      registrar('usuario_criado', {
+        usuario_id: result.lastID,
+        tipo,
+        criado_por: req.user?.id ?? null, // null = cadastro inicial (bootstrap)
+        ip: req.ip
+      });
 
       res.status(201).json({
         message: 'Usuário registrado com sucesso',
