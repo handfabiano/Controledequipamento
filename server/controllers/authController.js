@@ -3,6 +3,11 @@ const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
 const { jwtSecret } = require('../config');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// E-mails são comparados sem diferenciar maiúsculas/minúsculas e sem espaços nas pontas
+const normalizarEmail = (email) => email.trim().toLowerCase();
+
 const authController = {
   async login(req, res) {
     try {
@@ -12,9 +17,13 @@ const authController = {
         return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       }
 
+      if (typeof email !== 'string' || typeof senha !== 'string') {
+        return res.status(400).json({ error: 'Email e senha devem ser texto' });
+      }
+
       const usuario = await getAsync(
-        'SELECT * FROM usuarios WHERE email = ? AND ativo = 1',
-        [email]
+        'SELECT * FROM usuarios WHERE LOWER(email) = ? AND ativo = 1',
+        [normalizarEmail(email)]
       );
 
       if (!usuario) {
@@ -51,6 +60,18 @@ const authController = {
         return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
       }
 
+      if ([nome, email, senha, tipo].some((campo) => typeof campo !== 'string')) {
+        return res.status(400).json({ error: 'Nome, email, senha e tipo devem ser texto' });
+      }
+
+      if (!nome.trim()) {
+        return res.status(400).json({ error: 'Nome não pode ser vazio' });
+      }
+
+      if (!EMAIL_REGEX.test(email.trim())) {
+        return res.status(400).json({ error: 'Email inválido' });
+      }
+
       const tiposValidos = ['coordenador', 'responsavel_entrega', 'responsavel_recebimento', 'tecnico'];
       if (!tiposValidos.includes(tipo)) {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
@@ -83,7 +104,12 @@ const authController = {
         }
       }
 
-      const usuarioExiste = await getAsync('SELECT id FROM usuarios WHERE email = ?', [email]);
+      const emailNormalizado = normalizarEmail(email);
+
+      const usuarioExiste = await getAsync(
+        'SELECT id FROM usuarios WHERE LOWER(email) = ?',
+        [emailNormalizado]
+      );
 
       if (usuarioExiste) {
         return res.status(400).json({ error: 'Email já cadastrado' });
@@ -93,7 +119,7 @@ const authController = {
 
       const result = await runAsync(
         'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',
-        [nome, email, senhaHash, tipo]
+        [nome.trim(), emailNormalizado, senhaHash, tipo]
       );
 
       res.status(201).json({
