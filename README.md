@@ -291,6 +291,14 @@ Esporte/
 - [ ] Fotos dos equipamentos
 - [ ] Controle de custos e orçamentos
 
+## Desenvolvimento com Claude Code
+
+O arquivo [`CLAUDE.md`](./CLAUDE.md) define como agentes de IA devem trabalhar neste
+repositório. A regra principal: **a cada tarefa, inventariar e invocar todos os plugins
+e skills disponíveis que se aplicam** (`code-review`, `simplify`, `security-review`,
+`run`, `session-start-hook`, etc.), além dos comandos, convenções e do checklist de
+validação do projeto (`npm test` + build do client).
+
 ## Suporte
 
 Para dúvidas ou problemas, entre em contato ou abra uma issue no repositório.
