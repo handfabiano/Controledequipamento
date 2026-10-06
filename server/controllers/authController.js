@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
 const { jwtSecret } = require('../config');
+const { validarSenha } = require('../services/senhas');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,8 +78,9 @@ const authController = {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
       }
 
-      if (senha.length < 6) {
-        return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres' });
+      const erroSenha = validarSenha(senha, { email });
+      if (erroSenha) {
+        return res.status(400).json({ error: erroSenha });
       }
 
       // Cadastro aberto apenas para o primeiro usuário (bootstrap do sistema).

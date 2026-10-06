@@ -279,7 +279,8 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 ## Segurança
 
 - Autenticação via JWT; e-mails comparados sem diferenciar maiúsculas/minúsculas
-- Senhas criptografadas com bcrypt
+- Senhas criptografadas com bcrypt; novas senhas: mínimo de 8 caracteres (máx. 72 bytes) e sem senhas
+  comuns/previsíveis (`server/services/senhas.js`)
 - Middleware de autenticação em todas as rotas protegidas
 - Autorização no servidor por perfil e por envolvimento (transferências, eventos)
 - Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP

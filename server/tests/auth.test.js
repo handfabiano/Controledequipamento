@@ -53,13 +53,13 @@ test('rotas protegidas exigem token', async () => {
 
 test('registro: sem token é negado depois do primeiro usuário', async () => {
   const r = await srv.req('POST', '/api/auth/register', {
-    body: { nome: 'Intruso', email: 'intruso@x.com', senha: 'abcdef', tipo: 'coordenador' }
+    body: { nome: 'Intruso', email: 'intruso@x.com', senha: 'senha-segura-9', tipo: 'coordenador' }
   });
   assert.strictEqual(r.status, 401);
 });
 
 test('registro: só coordenador cadastra usuários', async () => {
-  const body = { nome: 'Novo', email: 'novo@x.com', senha: 'abcdef', tipo: 'tecnico' };
+  const body = { nome: 'Novo', email: 'novo@x.com', senha: 'senha-segura-9', tipo: 'tecnico' };
   const negado = await srv.req('POST', '/api/auth/register', { token: t.tecnico, body });
   assert.strictEqual(negado.status, 403);
 
@@ -70,7 +70,7 @@ test('registro: só coordenador cadastra usuários', async () => {
 test('registro: e-mail duplicado é detectado ignorando maiúsculas', async () => {
   const r = await srv.req('POST', '/api/auth/register', {
     token: t.coordenador,
-    body: { nome: 'Dup', email: 'JOAO@SISTEMA.COM', senha: 'abcdef', tipo: 'tecnico' }
+    body: { nome: 'Dup', email: 'JOAO@SISTEMA.COM', senha: 'senha-segura-9', tipo: 'tecnico' }
   });
   assert.strictEqual(r.status, 400);
 });
@@ -78,7 +78,7 @@ test('registro: e-mail duplicado é detectado ignorando maiúsculas', async () =
 test('registro: valida formato de e-mail e tipos dos campos (400, não 500)', async () => {
   const emailRuim = await srv.req('POST', '/api/auth/register', {
     token: t.coordenador,
-    body: { nome: 'X', email: 'nao-e-email', senha: 'abcdef', tipo: 'tecnico' }
+    body: { nome: 'X', email: 'nao-e-email', senha: 'senha-segura-9', tipo: 'tecnico' }
   });
   assert.strictEqual(emailRuim.status, 400);
 
@@ -92,12 +92,53 @@ test('registro: valida formato de e-mail e tipos dos campos (400, não 500)', as
 test('registro: e-mail é gravado em minúsculas e permite login', async () => {
   const reg = await srv.req('POST', '/api/auth/register', {
     token: t.coordenador,
-    body: { nome: 'Maiusculo', email: 'Maiusculo@Teste.com', senha: 'abcdef', tipo: 'tecnico' }
+    body: { nome: 'Maiusculo', email: 'Maiusculo@Teste.com', senha: 'senha-segura-9', tipo: 'tecnico' }
   });
   assert.strictEqual(reg.status, 201);
   const r = await srv.req('POST', '/api/auth/login', {
-    body: { email: 'maiusculo@teste.com', senha: 'abcdef' }
+    body: { email: 'maiusculo@teste.com', senha: 'senha-segura-9' }
   });
   assert.strictEqual(r.status, 200);
   assert.strictEqual(r.body.usuario.email, 'maiusculo@teste.com');
+});
+
+// --- Política de senha (A07-003) ---
+
+const registrarComSenha = (senha, extra = {}) =>
+  srv.req('POST', '/api/auth/register', {
+    token: t.coordenador,
+    body: { nome: 'Teste Senha', email: `senha${Math.random().toString(36).slice(2)}@x.com`, senha, tipo: 'tecnico', ...extra }
+  });
+
+test('registro: senha com menos de 8 caracteres é recusada', async () => {
+  const r = await registrarComSenha('abc1234');
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /8 caracteres/);
+});
+
+test('registro: senhas comuns são recusadas mesmo com 8+ caracteres', async () => {
+  for (const comum of ['12345678', 'password', 'SENHA123', 'Qwerty123', '00000000']) {
+    const r = await registrarComSenha(comum);
+    assert.strictEqual(r.status, 400, `"${comum}" deveria ser recusada`);
+    assert.match(r.body.error, /comum/);
+  }
+});
+
+test('registro: senha igual ao e-mail ou formada por um só caractere é recusada', async () => {
+  const igualEmail = await registrarComSenha('usuario@x.com', { email: 'usuario@x.com' });
+  assert.strictEqual(igualEmail.status, 400);
+
+  const repetida = await registrarComSenha('zzzzzzzzzz');
+  assert.strictEqual(repetida.status, 400);
+});
+
+test('registro: senha acima de 72 bytes é recusada (bcrypt truncaria em silêncio)', async () => {
+  const r = await registrarComSenha('a1'.repeat(37)); // 74 bytes
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /72/);
+});
+
+test('registro: senha de exatamente 8 caracteres não comum é aceita', async () => {
+  const r = await registrarComSenha('tr0ca-me');
+  assert.strictEqual(r.status, 201);
 });
