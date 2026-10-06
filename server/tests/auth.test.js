@@ -142,3 +142,55 @@ test('registro: senha de exatamente 8 caracteres não comum é aceita', async ()
   const r = await registrarComSenha('tr0ca-me');
   assert.strictEqual(r.status, 201);
 });
+
+// --- JWT: algoritmo fixo (A07-005) e login sem diferença de tempo (A07-006) ---
+
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+
+test('token assinado com outro algoritmo (HS512) é recusado, mesmo com a chave certa', async () => {
+  const payload = { id: USUARIOS.coordenador.id, email: USUARIOS.coordenador.email, tipo: 'coordenador' };
+  const hs512 = jwt.sign(payload, process.env.JWT_SECRET, { algorithm: 'HS512', expiresIn: '1h' });
+  const hs256 = jwt.sign(payload, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
+
+  assert.strictEqual((await srv.req('GET', '/api/auth/me', { token: hs256 })).status, 200);
+  assert.strictEqual((await srv.req('GET', '/api/auth/me', { token: hs512 })).status, 401);
+
+  const registro = await srv.req('POST', '/api/auth/register', {
+    token: hs512,
+    body: { nome: 'Via HS512', email: 'hs512@x.com', senha: 'senha-segura-9', tipo: 'tecnico' }
+  });
+  assert.strictEqual(registro.status, 401);
+});
+
+test('token "alg: none" é recusado', async () => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const semAssinatura = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ id: 1, tipo: 'coordenador' })}.`;
+  assert.strictEqual((await srv.req('GET', '/api/auth/me', { token: semAssinatura })).status, 401);
+});
+
+test('o token emitido no login usa HS256', async () => {
+  const r = await srv.req('POST', '/api/auth/login', {
+    body: { email: USUARIOS.coordenador.email, senha: '123456' }
+  });
+  assert.strictEqual(jwt.decode(r.body.token, { complete: true }).header.alg, 'HS256');
+});
+
+test('login de e-mail inexistente também executa bcrypt.compare (sem atalho de tempo)', async () => {
+  const original = bcrypt.compare;
+  let chamadas = 0;
+  bcrypt.compare = (...args) => { chamadas += 1; return original(...args); };
+  try {
+    const inexistente = await srv.req('POST', '/api/auth/login', {
+      body: { email: 'ninguem@sistema.com', senha: 'qualquer-coisa' }
+    });
+    const senhaErrada = await srv.req('POST', '/api/auth/login', {
+      body: { email: USUARIOS.coordenador.email, senha: 'qualquer-coisa' }
+    });
+    assert.strictEqual(inexistente.status, 401);
+    assert.deepStrictEqual(inexistente.body, senhaErrada.body);
+    assert.strictEqual(chamadas, 2, 'as duas tentativas devem passar pelo bcrypt');
+  } finally {
+    bcrypt.compare = original;
+  }
+});

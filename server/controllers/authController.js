@@ -1,13 +1,19 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
-const { jwtSecret } = require('../config');
+const { jwtSecret, jwtAlgorithm } = require('../config');
 const { validarSenha } = require('../services/senhas');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // E-mails são comparados sem diferenciar maiúsculas/minúsculas e sem espaços nas pontas
 const normalizarEmail = (email) => email.trim().toLowerCase();
+
+// Hash de uma senha aleatória, com o mesmo custo dos reais. Quando o e-mail não existe,
+// comparamos contra ele para que a resposta demore o mesmo que a de uma senha errada
+// (senão o tempo de resposta revela quais e-mails estão cadastrados).
+const hashFicticio = bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
 const authController = {
   async login(req, res) {
@@ -27,20 +33,16 @@ const authController = {
         [normalizarEmail(email)]
       );
 
-      if (!usuario) {
-        return res.status(401).json({ error: 'Credenciais inválidas' });
-      }
+      const senhaValida = await bcrypt.compare(senha, usuario ? usuario.senha : await hashFicticio);
 
-      const senhaValida = await bcrypt.compare(senha, usuario.senha);
-
-      if (!senhaValida) {
+      if (!usuario || !senhaValida) {
         return res.status(401).json({ error: 'Credenciais inválidas' });
       }
 
       const token = jwt.sign(
         { id: usuario.id, email: usuario.email, tipo: usuario.tipo },
         jwtSecret,
-        { expiresIn: '24h' }
+        { algorithm: jwtAlgorithm, expiresIn: '24h' }
       );
 
       // Não retornar a senha
@@ -96,7 +98,7 @@ const authController = {
 
         let decoded;
         try {
-          decoded = jwt.verify(token, jwtSecret);
+          decoded = jwt.verify(token, jwtSecret, { algorithms: [jwtAlgorithm] });
         } catch (err) {
           return res.status(401).json({ error: 'Token inválido' });
         }

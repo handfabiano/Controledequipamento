@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { jwtSecret } = require('../config');
+const { jwtSecret, jwtAlgorithm } = require('../config');
 
 const authMiddleware = (req, res, next) => {
   try {
@@ -9,7 +9,7 @@ const authMiddleware = (req, res, next) => {
       return res.status(401).json({ error: 'Token não fornecido' });
     }
 
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, jwtSecret, { algorithms: [jwtAlgorithm] });
     req.user = decoded;
     next();
   } catch (error) {
