@@ -1,4 +1,4 @@
-# Atualizações automáticas de dependências (A03-001): o Dependabot abre PRs semanais
+# Atualizações automáticas de dependências: o Dependabot abre PRs semanais
 # para o backend, o frontend e as actions do CI, e avisa de vulnerabilidades conhecidas.
 version: 2
 updates:
@@ -6,7 +6,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     groups:
       backend-minor-patch:
         update-types: [minor, patch]
@@ -15,7 +14,6 @@ updates:
     directory: /client
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     groups:
       client-minor-patch:
         update-types: [minor, patch]

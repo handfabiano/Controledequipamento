@@ -1,4 +1,4 @@
-// Registro de eventos de segurança (A09-001): uma linha JSON por evento, na saída padrão
+// Registro de eventos de segurança: uma linha JSON por evento, na saída padrão
 // (na Vercel vira log da função), para dar para investigar e alertar sobre tentativas de
 // invasão: força bruta, uso de contas, acessos negados e criação de usuários.
 //
@@ -14,28 +14,34 @@ let destino = (linha) => {
   if (process.env.NODE_ENV !== 'test') console.log(linha);
 };
 
-// Troca o destino das linhas (usado nos testes). Devolve a função que restaura o anterior.
+// Troca o destino das linhas (usado nos testes, que rodam um processo por arquivo).
 function definirDestino(novoDestino) {
-  const anterior = destino;
   destino = novoDestino;
-  return () => { destino = anterior; };
 }
 
 function limitar(valor) {
   return typeof valor === 'string' ? valor.slice(0, TAMANHO_MAXIMO_CAMPO) : valor;
 }
 
-function registrar(evento, campos = {}) {
+// Campos undefined somem sozinhos no JSON.stringify.
+function registrar(evento, campos) {
   const linha = { ts: new Date().toISOString(), categoria: 'seguranca', evento };
   for (const [chave, valor] of Object.entries(campos)) {
-    if (valor !== undefined) linha[chave] = limitar(valor);
+    linha[chave] = limitar(valor);
   }
   destino(JSON.stringify(linha));
 }
 
+// Registra uma negação específica (ex.: login_falha) e avisa registrarAcessosNegados para não
+// repetir a mesma resposta 401 como acesso_negado.
+function registrarNegacao(res, evento, campos) {
+  registrar(evento, campos);
+  res.locals.negacaoRegistrada = true;
+}
+
 // Registra toda resposta 401/403/429 (token ausente/inválido, perfil sem permissão, rate limit).
 // Deve ficar antes dos demais middlewares para pegar também o que o rate limiter barrar.
-// Quem já registrou um evento mais específico marca res.locals.negacaoRegistrada.
+// Respostas já registradas por registrarNegacao ficam de fora.
 function registrarAcessosNegados(req, res, next) {
   res.on('finish', () => {
     if (!STATUS_NEGADOS.has(res.statusCode) || res.locals.negacaoRegistrada) return;
@@ -50,4 +56,4 @@ function registrarAcessosNegados(req, res, next) {
   next();
 }
 
-module.exports = { registrar, registrarAcessosNegados, definirDestino };
+module.exports = { registrar, registrarNegacao, registrarAcessosNegados, definirDestino };

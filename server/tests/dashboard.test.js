@@ -85,12 +85,7 @@ test('contagens refletem eventos, problemas, transferências e manutenção', as
   assert.strictEqual(r.body.transferencias_pendentes, 1);
 
   // Quem não enxerga a transferência não a conta
-  const reg = await srv.req('POST', '/api/auth/register', {
-    token: t.coordenador,
-    body: { nome: 'Outro', email: 'outro@sistema.com', senha: 'senha-segura-9', tipo: 'tecnico' }
-  });
-  assert.strictEqual(reg.status, 201);
-  const outro = await srv.login('outro@sistema.com', 'senha-segura-9');
+  const { token: outro } = await srv.criarUsuario({ nome: 'Outro', email: 'outro@sistema.com' }, t.coordenador);
   assert.strictEqual((await resumo(outro)).body.transferencias_pendentes, 0);
   assert.strictEqual((await resumo(t.entrega)).body.transferencias_pendentes, 1, 'responsável de entrega sem designado vê');
 

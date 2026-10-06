@@ -1,20 +1,10 @@
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { getAsync, runAsync } = require('../database/init');
-const { jwtSecret, jwtAlgorithm } = require('../config');
-const { validarSenha } = require('../services/senhas');
-const { registrar } = require('../services/seguranca');
+const { validarSenha, hashSenha, compararSenha } = require('../services/senhas');
+const { registrar, registrarNegacao } = require('../services/seguranca');
+const { assinar, verificar, tokenDaRequisicao } = require('../services/token');
+const { normalizarEmail } = require('../services/validacao');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// E-mails são comparados sem diferenciar maiúsculas/minúsculas e sem espaços nas pontas
-const normalizarEmail = (email) => email.trim().toLowerCase();
-
-// Hash de uma senha aleatória, com o mesmo custo dos reais. Quando o e-mail não existe,
-// comparamos contra ele para que a resposta demore o mesmo que a de uma senha errada
-// (senão o tempo de resposta revela quais e-mails estão cadastrados).
-const hashFicticio = bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
 const authController = {
   async login(req, res) {
@@ -29,28 +19,27 @@ const authController = {
         return res.status(400).json({ error: 'Email e senha devem ser texto' });
       }
 
+      const emailNormalizado = normalizarEmail(email);
+
       const usuario = await getAsync(
         'SELECT * FROM usuarios WHERE LOWER(email) = ? AND ativo = 1',
-        [normalizarEmail(email)]
+        [emailNormalizado]
       );
 
-      const senhaValida = await bcrypt.compare(senha, usuario ? usuario.senha : await hashFicticio);
+      // Sem usuário a comparação roda mesmo assim (contra um hash fictício): o tempo de resposta
+      // não pode revelar quais e-mails existem.
+      const senhaValida = await compararSenha(senha, usuario?.senha);
 
       if (!usuario || !senhaValida) {
-        registrar('login_falha', {
-          email: normalizarEmail(email),
+        registrarNegacao(res, 'login_falha', {
+          email: emailNormalizado,
           motivo: usuario ? 'senha_incorreta' : 'usuario_inexistente',
           ip: req.ip
         });
-        res.locals.negacaoRegistrada = true;
         return res.status(401).json({ error: 'Credenciais inválidas' });
       }
 
-      const token = jwt.sign(
-        { id: usuario.id, email: usuario.email, tipo: usuario.tipo },
-        jwtSecret,
-        { algorithm: jwtAlgorithm, expiresIn: '24h' }
-      );
+      const token = assinar({ id: usuario.id, email: usuario.email, tipo: usuario.tipo });
 
       registrar('login_sucesso', { usuario_id: usuario.id, ip: req.ip });
 
@@ -89,7 +78,9 @@ const authController = {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
       }
 
-      const erroSenha = validarSenha(senha, { email });
+      const emailNormalizado = normalizarEmail(email);
+
+      const erroSenha = validarSenha(senha, emailNormalizado);
       if (erroSenha) {
         return res.status(400).json({ error: erroSenha });
       }
@@ -99,7 +90,7 @@ const authController = {
       const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
 
       if (userCount.count > 0) {
-        const token = req.headers.authorization?.split(' ')[1];
+        const token = tokenDaRequisicao(req);
 
         if (!token) {
           return res.status(401).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
@@ -107,7 +98,7 @@ const authController = {
 
         let decoded;
         try {
-          decoded = jwt.verify(token, jwtSecret, { algorithms: [jwtAlgorithm] });
+          decoded = verificar(token);
         } catch (err) {
           return res.status(401).json({ error: 'Token inválido' });
         }
@@ -118,8 +109,6 @@ const authController = {
         }
       }
 
-      const emailNormalizado = normalizarEmail(email);
-
       const usuarioExiste = await getAsync(
         'SELECT id FROM usuarios WHERE LOWER(email) = ?',
         [emailNormalizado]
@@ -129,7 +118,7 @@ const authController = {
         return res.status(400).json({ error: 'Email já cadastrado' });
       }
 
-      const senhaHash = await bcrypt.hash(senha, 10);
+      const senhaHash = await hashSenha(senha);
 
       const result = await runAsync(
         'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',

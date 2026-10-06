@@ -59,13 +59,9 @@ function inteiroPositivo(valor, padrao) {
 const rateLimitMax = inteiroPositivo(process.env.RATE_LIMIT_MAX, 300);
 const loginRateLimitMax = inteiroPositivo(process.env.LOGIN_RATE_LIMIT_MAX, 5);
 
-// Algoritmo fixo para assinar E verificar: o servidor nunca aceita outro vindo no cabeçalho do token.
-const jwtAlgorithm = 'HS256';
-
 module.exports = {
   isProduction,
   jwtSecret,
-  jwtAlgorithm,
   corsOrigins,
   trustProxy,
   rateLimitMax,

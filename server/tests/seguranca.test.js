@@ -1,30 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { EventEmitter } = require('node:events');
-const { iniciarServidor, USUARIOS } = require('./helpers');
+const { iniciarServidor, USUARIOS, SENHA_SEED, SENHA_VALIDA } = require('./helpers');
 const seguranca = require('../services/seguranca');
 
 let srv;
-let t;
-let linhas;
-let restaurar;
+let tokenCoordenador;
+let tokenTecnico;
+const linhas = [];
 
 test.before(async () => {
   srv = await iniciarServidor();
-  t = await srv.tokens();
+  tokenCoordenador = await srv.login(USUARIOS.coordenador.email);
+  tokenTecnico = await srv.login(USUARIOS.tecnico.email);
+  seguranca.definirDestino((linha) => linhas.push(linha));
 });
 test.after(() => srv.fechar());
-test.beforeEach(() => {
-  linhas = [];
-  restaurar = seguranca.definirDestino((linha) => linhas.push(linha));
-});
-test.afterEach(() => restaurar());
+test.beforeEach(() => { linhas.length = 0; });
 
 const eventos = (nome) => linhas.map((l) => JSON.parse(l)).filter((e) => e.evento === nome);
 
 test('login válido registra login_sucesso sem token nem senha', async () => {
   const r = await srv.req('POST', '/api/auth/login', {
-    body: { email: USUARIOS.coordenador.email, senha: '123456' }
+    body: { email: USUARIOS.coordenador.email, senha: SENHA_SEED }
   });
   assert.strictEqual(r.status, 200);
 
@@ -35,7 +33,7 @@ test('login válido registra login_sucesso sem token nem senha', async () => {
 
   const tudo = linhas.join('\n');
   assert.ok(!tudo.includes(r.body.token), 'o token não pode ir para o log');
-  assert.ok(!tudo.includes('123456'), 'a senha não pode ir para o log');
+  assert.ok(!tudo.includes(SENHA_SEED), 'a senha não pode ir para o log');
 });
 
 test('login falho registra o motivo (só no log) e não repete como acesso_negado', async () => {
@@ -65,8 +63,8 @@ test('401 e 403 viram acesso_negado com rota sem query string', async () => {
 
   linhas.length = 0;
   const negado = await srv.req('POST', '/api/auth/register', {
-    token: t.tecnico,
-    body: { nome: 'X', email: 'x@x.com', senha: 'senha-segura-9', tipo: 'tecnico' }
+    token: tokenTecnico,
+    body: { nome: 'X', email: 'x@x.com', senha: SENHA_VALIDA, tipo: 'tecnico' }
   });
   assert.strictEqual(negado.status, 403);
   const [proibido] = eventos('acesso_negado');
@@ -87,15 +85,15 @@ test('429 também é registrado como acesso_negado', () => {
 
 test('cadastro de usuário registra usuario_criado com quem criou', async () => {
   const r = await srv.req('POST', '/api/auth/register', {
-    token: t.coordenador,
-    body: { nome: 'Auditado', email: 'auditado@x.com', senha: 'senha-segura-9', tipo: 'tecnico' }
+    token: tokenCoordenador,
+    body: { nome: 'Auditado', email: 'auditado@x.com', senha: SENHA_VALIDA, tipo: 'tecnico' }
   });
   assert.strictEqual(r.status, 201);
   const [e] = eventos('usuario_criado');
   assert.strictEqual(e.usuario_id, r.body.id);
   assert.strictEqual(e.tipo, 'tecnico');
   assert.strictEqual(e.criado_por, USUARIOS.coordenador.id);
-  assert.ok(!linhas.join('\n').includes('senha-segura-9'));
+  assert.ok(!linhas.join('\n').includes(SENHA_VALIDA));
 });
 
 test('entrada com quebra de linha não forja outra linha de log', async () => {
