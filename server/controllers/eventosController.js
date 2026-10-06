@@ -1,5 +1,53 @@
 const { getAsync, allAsync, runAsync } = require('../database/init');
 const cache = require('../cache');
+const { recalcularStatus } = require('../services/equipamentoStatus');
+const {
+  AREAS,
+  AREAS_RESPONSAVEL,
+  TIPOS_RESPONSAVEL,
+  TRANSICOES_STATUS,
+  eventoAtivo,
+  ehEquipeDoEvento
+} = require('../services/eventos');
+
+// Converte "12" / 12 em 12; qualquer outra coisa vira null
+const inteiro = (valor) => {
+  const n = Number(valor);
+  return valor !== null && valor !== '' && valor !== undefined && Number.isInteger(n) ? n : null;
+};
+
+const textoValido = (valor) => typeof valor === 'string' && valor.trim().length > 0;
+
+// Checklist obrigatório do template: devolve a primeira categoria que não atinge a
+// quantidade mínima, ou null quando está completo.
+async function primeiroItemObrigatorioFaltando(evento) {
+  if (!evento.template_id) return null;
+
+  const checklist = await allAsync(`
+    SELECT ct.*, c.nome as categoria_nome
+    FROM checklist_template ct
+    LEFT JOIN categorias_equipamentos c ON ct.categoria_id = c.id
+    WHERE ct.template_id = ? AND ct.obrigatorio = 1
+  `, [evento.template_id]);
+
+  const equipamentosEvento = await allAsync(`
+    SELECT ee.*, e.categoria_id
+    FROM equipamentos_evento ee
+    LEFT JOIN equipamentos e ON ee.equipamento_id = e.id
+    WHERE ee.evento_id = ? AND ee.status != 'devolvido'
+  `, [evento.id]);
+
+  for (const item of checklist) {
+    const qtdAtual = equipamentosEvento
+      .filter(eq => eq.categoria_id === item.categoria_id)
+      .reduce((sum, eq) => sum + (eq.quantidade || 1), 0);
+
+    if (qtdAtual < item.quantidade_minima) {
+      return { categoria: item.categoria_nome, atual: qtdAtual, minimo: item.quantidade_minima };
+    }
+  }
+  return null;
+}
 
 const eventosController = {
   // Listar eventos
@@ -100,22 +148,57 @@ const eventosController = {
         return res.status(400).json({ error: 'Nome, local e datas são obrigatórios' });
       }
 
+      if (!textoValido(nome) || !textoValido(local)) {
+        return res.status(400).json({ error: 'Nome e local devem ser texto não vazio' });
+      }
+
+      const inicio = new Date(data_inicio);
+      const fim = new Date(data_fim);
+      if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
+        return res.status(400).json({ error: 'Datas inválidas' });
+      }
+      if (fim < inicio) {
+        return res.status(400).json({ error: 'A data de fim não pode ser anterior à data de início' });
+      }
+
+      if (template_id) {
+        const template = await getAsync('SELECT id FROM templates_eventos WHERE id = ?', [template_id]);
+        if (!template) {
+          return res.status(400).json({ error: 'Template não encontrado' });
+        }
+      }
+
+      // Valida todos os responsáveis ANTES de gravar, para não deixar evento pela metade
+      if (responsaveis !== undefined && !Array.isArray(responsaveis)) {
+        return res.status(400).json({ error: 'responsaveis deve ser uma lista' });
+      }
+
+      for (const resp of responsaveis || []) {
+        const usuarioId = inteiro(resp && resp.usuario_id);
+        if (usuarioId === null || !(await getAsync('SELECT id FROM usuarios WHERE id = ? AND ativo = 1', [usuarioId]))) {
+          return res.status(400).json({ error: `Responsável ${resp && resp.usuario_id} não encontrado` });
+        }
+        if (!AREAS_RESPONSAVEL.includes(resp.area)) {
+          return res.status(400).json({ error: `Área inválida para responsável. Opções: ${AREAS_RESPONSAVEL.join(', ')}` });
+        }
+        if (!TIPOS_RESPONSAVEL.includes(resp.tipo)) {
+          return res.status(400).json({ error: `Tipo inválido para responsável. Opções: ${TIPOS_RESPONSAVEL.join(', ')}` });
+        }
+      }
+
       const result = await runAsync(
         `INSERT INTO eventos (nome, local, template_id, data_inicio, data_fim, observacoes, criado_por)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [nome, local, template_id || null, data_inicio, data_fim, observacoes || null, req.user.id]
+        [nome.trim(), local.trim(), template_id || null, data_inicio, data_fim, observacoes || null, req.user.id]
       );
 
       const eventoId = result.lastID;
 
-      // Adicionar responsáveis se fornecidos
-      if (responsaveis && responsaveis.length > 0) {
-        for (const resp of responsaveis) {
-          await runAsync(
-            'INSERT INTO responsaveis_evento (evento_id, usuario_id, area, tipo) VALUES (?, ?, ?, ?)',
-            [eventoId, resp.usuario_id, resp.area, resp.tipo]
-          );
-        }
+      for (const resp of responsaveis || []) {
+        await runAsync(
+          'INSERT INTO responsaveis_evento (evento_id, usuario_id, area, tipo) VALUES (?, ?, ?, ?)',
+          [eventoId, resp.usuario_id, resp.area, resp.tipo]
+        );
       }
 
       res.status(201).json({
@@ -134,8 +217,12 @@ const eventosController = {
       const { id } = req.params;
       const { equipamentos } = req.body; // Array de { equipamento_id, responsavel_id, area, quantidade }
 
-      if (!equipamentos || equipamentos.length === 0) {
+      if (!Array.isArray(equipamentos) || equipamentos.length === 0) {
         return res.status(400).json({ error: 'Lista de equipamentos vazia' });
+      }
+
+      if (equipamentos.length > 200) {
+        return res.status(400).json({ error: 'No máximo 200 equipamentos por requisição' });
       }
 
       const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [id]);
@@ -144,18 +231,83 @@ const eventosController = {
         return res.status(404).json({ error: 'Evento não encontrado' });
       }
 
+      if (!eventoAtivo(evento)) {
+        return res.status(400).json({ error: 'Não é possível alocar equipamentos em evento concluído ou cancelado' });
+      }
+
+      if (!(await ehEquipeDoEvento(req.user, evento))) {
+        return res.status(403).json({ error: 'Apenas coordenadores, o criador ou os responsáveis do evento podem alocar equipamentos' });
+      }
+
+      // Valida o lote inteiro antes de gravar: ou entra tudo, ou nada
+      const problemas = [];
+      const vistos = new Set();
+      const itens = [];
+
       for (const eq of equipamentos) {
+        const equipamentoId = inteiro(eq && eq.equipamento_id);
+        if (equipamentoId === null) {
+          problemas.push('equipamento_id inválido');
+          continue;
+        }
+
+        if (vistos.has(equipamentoId)) {
+          problemas.push(`Equipamento ${equipamentoId} repetido na lista`);
+          continue;
+        }
+        vistos.add(equipamentoId);
+
+        const equipamento = await getAsync('SELECT id, codigo, status FROM equipamentos WHERE id = ?', [equipamentoId]);
+        if (!equipamento) {
+          problemas.push(`Equipamento ${equipamentoId} não encontrado`);
+          continue;
+        }
+
+        if (equipamento.status !== 'disponivel') {
+          problemas.push(`${equipamento.codigo} não está disponível (status: ${equipamento.status})`);
+          continue;
+        }
+
+        const area = eq.area || 'geral';
+        if (!AREAS.includes(area)) {
+          problemas.push(`${equipamento.codigo}: área inválida "${area}"`);
+          continue;
+        }
+
+        const quantidade = eq.quantidade === undefined ? 1 : inteiro(eq.quantidade);
+        if (quantidade === null || quantidade < 1) {
+          problemas.push(`${equipamento.codigo}: quantidade inválida`);
+          continue;
+        }
+
+        let responsavelId = null;
+        if (eq.responsavel_id) {
+          responsavelId = inteiro(eq.responsavel_id);
+          if (responsavelId === null || !(await getAsync('SELECT id FROM usuarios WHERE id = ? AND ativo = 1', [responsavelId]))) {
+            problemas.push(`${equipamento.codigo}: responsável ${eq.responsavel_id} não encontrado`);
+            continue;
+          }
+        }
+
+        itens.push({ equipamentoId, area, quantidade, responsavelId });
+      }
+
+      if (problemas.length > 0) {
+        return res.status(400).json({
+          error: `Não foi possível adicionar os equipamentos: ${problemas.join('; ')}`,
+          detalhes: problemas
+        });
+      }
+
+      for (const item of itens) {
         await runAsync(
           `INSERT INTO equipamentos_evento (evento_id, equipamento_id, responsavel_id, area, quantidade, status)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [id, eq.equipamento_id, eq.responsavel_id || null, eq.area || 'geral', eq.quantidade || 1, 'planejado']
+          [id, item.equipamentoId, item.responsavelId, item.area, item.quantidade, 'planejado']
         );
 
-        // Atualizar status do equipamento
-        await runAsync(
-          'UPDATE equipamentos SET status = ? WHERE id = ?',
-          ['em_uso', eq.equipamento_id]
-        );
+        // Status derivado: em_uso (ou com_problema/transferencia, se for o caso)
+        await recalcularStatus(item.equipamentoId);
       }
 
       res.json({ message: 'Equipamentos adicionados com sucesso' });
@@ -244,51 +396,75 @@ const eventosController = {
       const { id } = req.params;
       const { status } = req.body;
 
-      const statusValidos = ['planejamento', 'aprovado', 'em_andamento', 'concluido', 'cancelado'];
+      const statusValidos = Object.keys(TRANSICOES_STATUS);
 
       if (!statusValidos.includes(status)) {
         return res.status(400).json({ error: 'Status inválido' });
       }
 
-      // Se estiver tentando aprovar, apenas coordenadores podem e o checklist precisa estar completo
+      const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [id]);
+
+      if (!evento) {
+        return res.status(404).json({ error: 'Evento não encontrado' });
+      }
+
+      if (evento.status === status) {
+        return res.status(400).json({ error: `O evento já está com o status "${status}"` });
+      }
+
+      if (!TRANSICOES_STATUS[evento.status].includes(status)) {
+        const permitidas = TRANSICOES_STATUS[evento.status];
+        return res.status(400).json({
+          error: permitidas.length
+            ? `Não é possível passar de "${evento.status}" para "${status}". Opções: ${permitidas.join(', ')}`
+            : `Evento ${evento.status} não pode mais mudar de status`
+        });
+      }
+
+      // Aprovar, iniciar, concluir e voltar ao planejamento são do coordenador.
+      // Cancelar também pode ser feito por quem criou o evento.
+      const ehCoordenador = req.user.tipo === 'coordenador';
+      const podeCancelar = status === 'cancelado' && evento.criado_por === req.user.id;
+
+      if (!ehCoordenador && !podeCancelar) {
+        return res.status(403).json({
+          error: status === 'cancelado'
+            ? 'Apenas coordenadores ou quem criou o evento podem cancelá-lo'
+            : 'Apenas coordenadores podem alterar o status do evento'
+        });
+      }
+
+      // Para aprovar, o checklist obrigatório do template precisa estar completo
       if (status === 'aprovado') {
-        if (req.user.tipo !== 'coordenador') {
-          return res.status(403).json({ error: 'Apenas coordenadores podem aprovar eventos' });
-        }
-
-        const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [id]);
-
-        if (evento && evento.template_id) {
-          const checklist = await allAsync(`
-            SELECT ct.*, c.nome as categoria_nome
-            FROM checklist_template ct
-            LEFT JOIN categorias_equipamentos c ON ct.categoria_id = c.id
-            WHERE ct.template_id = ? AND ct.obrigatorio = 1
-          `, [evento.template_id]);
-
-          const equipamentosEvento = await allAsync(`
-            SELECT ee.*, e.categoria_id
-            FROM equipamentos_evento ee
-            LEFT JOIN equipamentos e ON ee.equipamento_id = e.id
-            WHERE ee.evento_id = ?
-          `, [id]);
-
-          for (const item of checklist) {
-            const qtdAtual = equipamentosEvento
-              .filter(eq => eq.categoria_id === item.categoria_id)
-              .reduce((sum, eq) => sum + (eq.quantidade || 1), 0);
-
-            if (qtdAtual < item.quantidade_minima) {
-              return res.status(400).json({
-                error: 'Checklist incompleto',
-                mensagem: `Faltam itens obrigatórios: ${item.categoria_nome} (${qtdAtual}/${item.quantidade_minima})`
-              });
-            }
-          }
+        const faltando = await primeiroItemObrigatorioFaltando(evento);
+        if (faltando) {
+          return res.status(400).json({
+            error: 'Checklist incompleto',
+            mensagem: `Faltam itens obrigatórios: ${faltando.categoria} (${faltando.atual}/${faltando.minimo})`
+          });
         }
       }
 
       await runAsync('UPDATE eventos SET status = ? WHERE id = ?', [status, id]);
+
+      // Evento encerrado: as alocações são devolvidas e os equipamentos liberados
+      // (cada um volta ao status que de fato lhe cabe: disponível, com problema, em
+      // transferência, em manutenção ou ainda alocado em outro evento)
+      if (status === 'concluido' || status === 'cancelado') {
+        const alocados = await allAsync(
+          "SELECT DISTINCT equipamento_id FROM equipamentos_evento WHERE evento_id = ? AND status != 'devolvido'",
+          [id]
+        );
+
+        await runAsync(
+          "UPDATE equipamentos_evento SET status = 'devolvido' WHERE evento_id = ? AND status != 'devolvido'",
+          [id]
+        );
+
+        for (const { equipamento_id } of alocados) {
+          await recalcularStatus(equipamento_id);
+        }
+      }
 
       res.json({ message: 'Status atualizado com sucesso' });
     } catch (error) {
