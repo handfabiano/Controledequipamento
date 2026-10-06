@@ -5,9 +5,15 @@ const bodyParser = require('body-parser');
 const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
-const { corsOrigins } = require('./config');
+const { corsOrigins, trustProxy } = require('./config');
 
 const app = express();
+
+// IP real do cliente atrás de proxy (necessário para o rate limit funcionar por usuário)
+if (trustProxy !== false) {
+  app.set('trust proxy', trustProxy);
+}
+
 const PORT = process.env.PORT || 3001;
 
 // Inicializar banco de dados (necessário para ambos os ambientes)
@@ -67,6 +73,14 @@ app.use((req, res, next) => {
 
 // Error handling
 app.use((err, req, res, next) => {
+  // JSON malformado ou corpo grande demais são erros do cliente, não do servidor
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido no corpo da requisição' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Corpo da requisição grande demais' });
+  }
+
   console.error('Erro não tratado:', err);
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
