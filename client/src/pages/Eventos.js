@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { eventos, equipamentos as equipamentosAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import './Eventos.css';
 
 function Eventos() {
+  const { user } = useAuth();
   const [eventosList, setEventosList] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,16 +33,15 @@ function Eventos() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [eventosResponse, templatesResponse, equipamentosResponse] = await Promise.all([
+      const [eventosResponse, templatesResponse, equipamentosTodos] = await Promise.all([
         eventos.listar(),
         eventos.listarTemplates(),
-        equipamentosAPI.listar(),
+        equipamentosAPI.listarTodos(),
       ]);
 
-      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
-      setEventosList(eventosResponse.data.data || eventosResponse.data);
-      setTemplates(templatesResponse.data.data || templatesResponse.data);
-      setEquipamentosList(equipamentosResponse.data.data || equipamentosResponse.data);
+      setEventosList(eventosResponse.data);
+      setTemplates(templatesResponse.data);
+      setEquipamentosList(equipamentosTodos);
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
       alert('Erro ao carregar eventos');
@@ -86,7 +87,7 @@ function Eventos() {
       loadData();
     } catch (error) {
       console.error('Erro ao adicionar equipamentos:', error);
-      alert('Erro ao adicionar equipamentos');
+      alert(error.response?.data?.error || 'Erro ao adicionar equipamentos');
     }
   };
 
@@ -103,6 +104,14 @@ function Eventos() {
   };
 
   const handleAtualizarStatus = async (eventoId, novoStatus) => {
+    const confirmacoes = {
+      concluido: 'Concluir o evento? Os equipamentos alocados serão devolvidos e liberados.',
+      cancelado: 'Cancelar o evento? Os equipamentos alocados serão liberados.',
+    };
+    if (confirmacoes[novoStatus] && !window.confirm(confirmacoes[novoStatus])) {
+      return;
+    }
+
     try {
       await eventos.atualizarStatus(eventoId, novoStatus);
       alert('Status atualizado com sucesso!');
@@ -201,15 +210,17 @@ function Eventos() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => {
-                        setSelectedEvento(evento);
-                        setShowEquipamentosModal(true);
-                      }}
-                    >
-                      Adicionar Equipamentos
-                    </button>
+                    {['planejamento', 'aprovado', 'em_andamento'].includes(evento.status) && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => {
+                          setSelectedEvento(evento);
+                          setShowEquipamentosModal(true);
+                        }}
+                      >
+                        Adicionar Equipamentos
+                      </button>
+                    )}
                     {evento.template_id && (
                       <button
                         className="btn btn-sm btn-warning"
@@ -218,12 +229,37 @@ function Eventos() {
                         Validar Checklist
                       </button>
                     )}
-                    {evento.status === 'planejamento' && (
+                    {user?.tipo === 'coordenador' && evento.status === 'planejamento' && (
                       <button
                         className="btn btn-sm btn-success"
                         onClick={() => handleAtualizarStatus(evento.id, 'aprovado')}
                       >
                         Aprovar
+                      </button>
+                    )}
+                    {user?.tipo === 'coordenador' && evento.status === 'aprovado' && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleAtualizarStatus(evento.id, 'em_andamento')}
+                      >
+                        Iniciar
+                      </button>
+                    )}
+                    {user?.tipo === 'coordenador' && evento.status === 'em_andamento' && (
+                      <button
+                        className="btn btn-sm btn-success"
+                        onClick={() => handleAtualizarStatus(evento.id, 'concluido')}
+                      >
+                        Concluir
+                      </button>
+                    )}
+                    {['planejamento', 'aprovado', 'em_andamento'].includes(evento.status) &&
+                      (user?.tipo === 'coordenador' || evento.criado_por === user?.id) && (
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => handleAtualizarStatus(evento.id, 'cancelado')}
+                      >
+                        Cancelar
                       </button>
                     )}
                   </div>

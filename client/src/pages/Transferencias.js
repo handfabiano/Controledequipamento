@@ -27,14 +27,13 @@ function Transferencias() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [transferResponse, equipResponse] = await Promise.all([
+      const [transferResponse, equipamentosTodos] = await Promise.all([
         transferencias.listar(),
-        equipamentos.listar(),
+        equipamentos.listarTodos(),
       ]);
 
-      // Suporte para resposta paginada (nova estrutura) e array direto (retrocompatibilidade)
-      setTransferenciasList(transferResponse.data.data || transferResponse.data);
-      setEquipamentosList(equipResponse.data.data || equipResponse.data);
+      setTransferenciasList(transferResponse.data);
+      setEquipamentosList(equipamentosTodos);
     } catch (error) {
       console.error('Erro ao carregar transferências:', error);
       alert('Erro ao carregar transferências');
@@ -120,7 +119,7 @@ function Transferencias() {
       case 'recebimento':
         return (user?.tipo === 'responsavel_recebimento' || user?.tipo === 'coordenador') &&
                !transferencia.aprovacao_recebimento &&
-               transferencia.aprovacao_entrega;
+               Boolean(transferencia.aprovacao_entrega);
       default:
         return false;
     }
@@ -220,7 +219,8 @@ function Transferencias() {
                         Confirmar Recebimento
                       </button>
                     )}
-                    {trans.status !== 'concluida' && trans.status !== 'cancelada' && (
+                    {trans.status !== 'concluida' && trans.status !== 'cancelada' &&
+                      (user?.tipo === 'coordenador' || trans.solicitante_id === user?.id) && (
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleCancelar(trans.id)}

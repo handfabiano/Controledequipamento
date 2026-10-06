@@ -9,6 +9,7 @@ const equipamentosController = require('../controllers/equipamentosController');
 const transferenciasController = require('../controllers/transferenciasController');
 const eventosController = require('../controllers/eventosController');
 const notificacoesController = require('../controllers/notificacoesController');
+const dashboardController = require('../controllers/dashboardController');
 
 // Validators
 const equipamentoValidator = require('../validators/equipamentoValidator');
@@ -55,5 +56,8 @@ router.get('/notificacoes', authMiddleware, notificacoesController.listar);
 router.get('/notificacoes/nao-lidas/count', authMiddleware, notificacoesController.contarNaoLidas);
 router.put('/notificacoes/ler-todas', authMiddleware, notificacoesController.marcarTodasLidas);
 router.put('/notificacoes/:id/ler', authMiddleware, notificacoesController.marcarLida);
+
+// Painel inicial
+router.get('/dashboard/resumo', authMiddleware, dashboardController.resumo);
 
 module.exports = router;

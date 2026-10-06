@@ -46,6 +46,21 @@ export const auth = {
 // Equipamentos
 export const equipamentos = {
   listar: (params) => api.get('/equipamentos', { params }),
+  // A listagem é paginada (máx. 100 por página). Telas que precisam escolher entre TODOS
+  // os equipamentos (transferências, alocação em eventos) percorrem todas as páginas;
+  // sem isso só os 50 primeiros apareciam.
+  listarTodos: async (params = {}) => {
+    const itens = [];
+    let page = 1;
+    let hasNext = true;
+    while (hasNext) {
+      const { data } = await api.get('/equipamentos', { params: { ...params, page, limit: 100 } });
+      itens.push(...data.data);
+      hasNext = data.pagination.hasNext;
+      page += 1;
+    }
+    return itens;
+  },
   buscarPorId: (id) => api.get(`/equipamentos/${id}`),
   buscarPorTombamento: (tombamento) => api.get(`/equipamentos/tombamento/${tombamento}`),
   criar: (data) => api.post('/equipamentos', data),
@@ -77,6 +92,11 @@ export const eventos = {
   validarChecklist: (id) => api.get(`/eventos/${id}/validar-checklist`),
   atualizarStatus: (id, status) => api.put(`/eventos/${id}/status`, { status }),
   listarTemplates: () => api.get('/eventos/templates'),
+};
+
+// Painel inicial
+export const dashboard = {
+  resumo: () => api.get('/dashboard/resumo'),
 };
 
 // Notificações

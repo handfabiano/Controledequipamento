@@ -45,6 +45,18 @@ test('listagem paginada: limit/page, hasNext e limites do validador', async () =
   assert.strictEqual(grande.status, 400);
 });
 
+test('filtros vazios (como a tela envia sem filtro ativo) são ignorados, não geram 400', async () => {
+  const r = await srv.req('GET', '/api/equipamentos?status=&categoria_id=&deposito_id=&search=&page=1&limit=50', {
+    token: t.coordenador
+  });
+  assert.strictEqual(r.status, 200, r.text);
+  assert.strictEqual(r.body.pagination.total, 15);
+
+  // Valores preenchidos continuam validados
+  const ruim = await srv.req('GET', '/api/equipamentos?status=banana', { token: t.coordenador });
+  assert.strictEqual(ruim.status, 400);
+});
+
 test('busca por texto e filtro de status', async () => {
   const busca = await srv.req('GET', '/api/equipamentos?search=shure', { token: t.coordenador });
   assert.ok(busca.body.data.length >= 3);
