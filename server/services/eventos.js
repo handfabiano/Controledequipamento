@@ -1,11 +1,15 @@
 // Regras compartilhadas de eventos.
 
 const { getAsync } = require('../database/init');
-const { STATUS_EVENTO_ATIVO } = require('./equipamentoStatus');
 
 const AREAS = ['som', 'iluminacao', 'palco', 'geral'];
-const AREAS_RESPONSAVEL = ['som', 'iluminacao', 'palco', 'geral', 'coordenacao'];
+const AREAS_RESPONSAVEL = [...AREAS, 'coordenacao'];
 const TIPOS_RESPONSAVEL = ['entrega', 'recebimento', 'coordenador'];
+
+// Eventos que ainda "seguram" equipamentos
+const STATUS_EVENTO_ATIVO = ['planejamento', 'aprovado', 'em_andamento'];
+// Entre eventos simultâneos só vale para eventos já aprovados ou em andamento
+const STATUS_EVENTO_TRANSFERIVEL = ['aprovado', 'em_andamento'];
 
 // Máquina de estados do evento; concluído e cancelado são finais
 const TRANSICOES_STATUS = {
@@ -34,6 +38,8 @@ module.exports = {
   AREAS,
   AREAS_RESPONSAVEL,
   TIPOS_RESPONSAVEL,
+  STATUS_EVENTO_ATIVO,
+  STATUS_EVENTO_TRANSFERIVEL,
   TRANSICOES_STATUS,
   eventoAtivo,
   ehEquipeDoEvento

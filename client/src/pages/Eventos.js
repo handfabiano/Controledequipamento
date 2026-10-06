@@ -3,8 +3,18 @@ import { eventos, equipamentos as equipamentosAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import './Eventos.css';
 
+// Eventos que ainda aceitam alterações (espelha as regras do servidor)
+const STATUS_ATIVOS = ['planejamento', 'aprovado', 'em_andamento'];
+
+// Próxima etapa que o coordenador pode dar a cada evento
+const PROXIMA_ETAPA = {
+  planejamento: { status: 'aprovado', rotulo: 'Aprovar', classe: 'btn-success' },
+  aprovado: { status: 'em_andamento', rotulo: 'Iniciar', classe: 'btn-primary' },
+  em_andamento: { status: 'concluido', rotulo: 'Concluir', classe: 'btn-success' },
+};
+
 function Eventos() {
-  const { user } = useAuth();
+  const { user, isCoordenador } = useAuth();
   const [eventosList, setEventosList] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +46,7 @@ function Eventos() {
       const [eventosResponse, templatesResponse, equipamentosTodos] = await Promise.all([
         eventos.listar(),
         eventos.listarTemplates(),
-        equipamentosAPI.listarTodos(),
+        equipamentosAPI.listarTodos({ status: 'disponivel' }),
       ]);
 
       setEventosList(eventosResponse.data);
@@ -210,7 +220,7 @@ function Eventos() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    {['planejamento', 'aprovado', 'em_andamento'].includes(evento.status) && (
+                    {STATUS_ATIVOS.includes(evento.status) && (
                       <button
                         className="btn btn-sm btn-primary"
                         onClick={() => {
@@ -229,32 +239,16 @@ function Eventos() {
                         Validar Checklist
                       </button>
                     )}
-                    {user?.tipo === 'coordenador' && evento.status === 'planejamento' && (
+                    {isCoordenador() && PROXIMA_ETAPA[evento.status] && (
                       <button
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleAtualizarStatus(evento.id, 'aprovado')}
+                        className={`btn btn-sm ${PROXIMA_ETAPA[evento.status].classe}`}
+                        onClick={() => handleAtualizarStatus(evento.id, PROXIMA_ETAPA[evento.status].status)}
                       >
-                        Aprovar
+                        {PROXIMA_ETAPA[evento.status].rotulo}
                       </button>
                     )}
-                    {user?.tipo === 'coordenador' && evento.status === 'aprovado' && (
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => handleAtualizarStatus(evento.id, 'em_andamento')}
-                      >
-                        Iniciar
-                      </button>
-                    )}
-                    {user?.tipo === 'coordenador' && evento.status === 'em_andamento' && (
-                      <button
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleAtualizarStatus(evento.id, 'concluido')}
-                      >
-                        Concluir
-                      </button>
-                    )}
-                    {['planejamento', 'aprovado', 'em_andamento'].includes(evento.status) &&
-                      (user?.tipo === 'coordenador' || evento.criado_por === user?.id) && (
+                    {STATUS_ATIVOS.includes(evento.status) &&
+                      (isCoordenador() || evento.criado_por === user?.id) && (
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleAtualizarStatus(evento.id, 'cancelado')}

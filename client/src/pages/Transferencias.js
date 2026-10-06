@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import './Transferencias.css';
 
 function Transferencias() {
-  const { user } = useAuth();
+  const { user, isCoordenador } = useAuth();
   const [transferenciasList, setTransferenciasList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -112,7 +112,7 @@ function Transferencias() {
 
     switch (tipo) {
       case 'coordenador':
-        return user?.tipo === 'coordenador' && !transferencia.aprovacao_coordenador;
+        return isCoordenador() && !transferencia.aprovacao_coordenador;
       case 'entrega':
         return (user?.tipo === 'responsavel_entrega' || user?.tipo === 'coordenador') &&
                !transferencia.aprovacao_entrega;
@@ -220,7 +220,7 @@ function Transferencias() {
                       </button>
                     )}
                     {trans.status !== 'concluida' && trans.status !== 'cancelada' &&
-                      (user?.tipo === 'coordenador' || trans.solicitante_id === user?.id) && (
+                      (isCoordenador() || trans.solicitante_id === user?.id) && (
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleCancelar(trans.id)}

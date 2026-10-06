@@ -1,7 +1,6 @@
 const { getAsync, allAsync } = require('../database/init');
 const { condicaoVisibilidade } = require('../services/transferencias');
-
-const STATUS_EQUIPAMENTO = ['disponivel', 'em_uso', 'com_problema', 'transferencia', 'manutencao'];
+const { STATUS_EQUIPAMENTO } = require('../services/equipamentoStatus');
 
 const dashboardController = {
   // Números do painel inicial, calculados no banco: o cliente só recebe a primeira
@@ -54,9 +53,7 @@ const dashboardController = {
           descricao: `${p.codigo} - ${p.nome} com problema reportado`,
           data: p.data_relato
         }))
-      ]
-        .sort((a, b) => new Date(b.data) - new Date(a.data))
-        .slice(0, 10);
+      ].sort((a, b) => new Date(b.data) - new Date(a.data)); // cada fonte já vem limitada a 5
 
       res.json({
         equipamentos,

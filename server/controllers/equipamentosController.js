@@ -1,11 +1,14 @@
-const { getAsync, allAsync, runAsync, gerarTombamento, gerarCodigo } = require('../database/init');
+const { getAsync, allAsync, runAsync, placeholders, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
 const cache = require('../cache');
-const { recalcularStatus, temProblemaGrave, GRAVIDADES_GRAVES } = require('../services/equipamentoStatus');
-
-// Status que o usuário pode definir manualmente; os demais são derivados pelo sistema
-// (problemas, transferências e eventos) — ver services/equipamentoStatus.js
-const STATUS_MANUAIS = ['disponivel', 'manutencao'];
+const {
+  STATUS_MANUAIS,
+  GRAVIDADES_GRAVES,
+  calcularStatus,
+  recalcularStatus,
+  temProblemaGrave
+} = require('../services/equipamentoStatus');
+const { registrarMovimentacao } = require('../services/historico');
 
 const escapeHtml = (valor) =>
   String(valor ?? '')
@@ -14,6 +17,24 @@ const escapeHtml = (valor) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+// Campos opcionais de texto podem ser limpos enviando string vazia
+const textoOpcional = (novo, atual) => (novo !== undefined ? (novo === '' ? null : novo) : atual);
+
+// Confere se categoria e depósito informados existem; devolve a mensagem de erro ou null
+async function erroDeReferencias({ categoria_id, deposito_id }) {
+  if (categoria_id) {
+    const categoria = await getAsync('SELECT id FROM categorias_equipamentos WHERE id = ?', [categoria_id]);
+    if (!categoria) return 'Categoria não encontrada';
+  }
+
+  if (deposito_id) {
+    const deposito = await getAsync('SELECT id FROM depositos WHERE id = ?', [deposito_id]);
+    if (!deposito) return 'Depósito não encontrado';
+  }
+
+  return null;
+}
 
 const erroDeUnicidade = (error) =>
   error && (error.code === '23505' || error.code === 'SQLITE_CONSTRAINT' ||
@@ -89,11 +110,10 @@ const equipamentosController = {
       // Buscar problemas não resolvidos para cada equipamento
       if (equipamentos.length > 0) {
         const ids = equipamentos.map(e => e.id);
-        const placeholders = ids.map(() => '?').join(',');
 
         const problemas = await allAsync(
           `SELECT * FROM problemas_equipamentos
-           WHERE equipamento_id IN (${placeholders}) AND resolvido = 0
+           WHERE equipamento_id IN (${placeholders(ids)}) AND resolvido = 0
            ORDER BY data_relato DESC`,
           ids
         );
@@ -179,16 +199,9 @@ const equipamentosController = {
         return res.status(400).json({ error: 'Nome e categoria são obrigatórios' });
       }
 
-      const categoria = await getAsync('SELECT id FROM categorias_equipamentos WHERE id = ?', [categoria_id]);
-      if (!categoria) {
-        return res.status(400).json({ error: 'Categoria não encontrada' });
-      }
-
-      if (deposito_id) {
-        const deposito = await getAsync('SELECT id FROM depositos WHERE id = ?', [deposito_id]);
-        if (!deposito) {
-          return res.status(400).json({ error: 'Depósito não encontrado' });
-        }
+      const erroReferencias = await erroDeReferencias({ categoria_id, deposito_id });
+      if (erroReferencias) {
+        return res.status(400).json({ error: erroReferencias });
       }
 
       // Gerar ou validar código
@@ -201,7 +214,7 @@ const equipamentosController = {
 
       // Se foi fornecido apenas o prefixo (3 letras), gerar código automaticamente
       const usouPrefixo = Boolean(prefixo && !codigo);
-      if (prefixo && !codigo) {
+      if (usouPrefixo) {
         if (prefixo.length !== 3 || !/^[A-Z]{3}$/.test(prefixo)) {
           return res.status(400).json({ error: 'Prefixo deve conter exatamente 3 letras maiúsculas (ex: MIC, CAI, MES)' });
         }
@@ -250,10 +263,13 @@ const equipamentosController = {
       }
 
       // Registrar no histórico
-      await runAsync(
-        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, destino, usuario_id, observacoes) VALUES (?, ?, ?, ?, ?)',
-        [result.lastID, 'criacao', deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito', req.user.id, 'Equipamento criado']
-      );
+      await registrarMovimentacao({
+        equipamentoId: result.lastID,
+        tipo: 'criacao',
+        destino: deposito_id ? `Depósito ID: ${deposito_id}` : 'Sem depósito',
+        usuarioId: req.user.id,
+        observacoes: 'Equipamento criado'
+      });
 
       res.status(201).json({
         message: 'Equipamento criado com sucesso',
@@ -286,22 +302,14 @@ const equipamentosController = {
         });
       }
 
-      if (categoria_id) {
-        const categoria = await getAsync('SELECT id FROM categorias_equipamentos WHERE id = ?', [categoria_id]);
-        if (!categoria) {
-          return res.status(400).json({ error: 'Categoria não encontrada' });
-        }
+      const erroReferencias = await erroDeReferencias({ categoria_id, deposito_id });
+      if (erroReferencias) {
+        return res.status(400).json({ error: erroReferencias });
       }
 
-      if (deposito_id) {
-        const deposito = await getAsync('SELECT id FROM depositos WHERE id = ?', [deposito_id]);
-        if (!deposito) {
-          return res.status(400).json({ error: 'Depósito não encontrado' });
-        }
-      }
-
-      // Campos opcionais podem ser limpos enviando string vazia
-      const textoOpcional = (novo, atual) => (novo !== undefined ? (novo === '' ? null : novo) : atual);
+      // "disponivel" manual significa "liberar": o status passa a refletir a situação real
+      // (ex.: continua em_uso se estiver alocado em evento)
+      const statusFinal = status === 'disponivel' ? await calcularStatus(id) : (status || equipamento.status);
 
       await runAsync(
         `UPDATE equipamentos
@@ -315,23 +323,19 @@ const equipamentosController = {
          textoOpcional(modelo, equipamento.modelo),
          textoOpcional(numero_serie, equipamento.numero_serie),
          deposito_id !== undefined ? deposito_id : equipamento.deposito_id,
-         status || equipamento.status,
+         statusFinal,
          condicao || equipamento.condicao,
          textoOpcional(observacoes, equipamento.observacoes),
          id]
       );
 
-      // "disponivel" manual significa "liberar": o status passa a refletir a situação real
-      // (ex.: continua em_uso se estiver alocado em evento)
-      if (status === 'disponivel') {
-        await recalcularStatus(id);
-      }
-
       // Registrar alteração no histórico
-      await runAsync(
-        'INSERT INTO historico_movimentacoes (equipamento_id, tipo_movimentacao, usuario_id, observacoes) VALUES (?, ?, ?, ?)',
-        [id, 'atualizacao', req.user.id, 'Dados do equipamento atualizados']
-      );
+      await registrarMovimentacao({
+        equipamentoId: id,
+        tipo: 'atualizacao',
+        usuarioId: req.user.id,
+        observacoes: 'Dados do equipamento atualizados'
+      });
 
       res.json({ message: 'Equipamento atualizado com sucesso' });
     } catch (error) {
@@ -363,7 +367,7 @@ const equipamentosController = {
 
       // Problema alta/crítica degrada a condição ("quebrado" nunca é rebaixado para "ruim")
       // e o status passa a ser com_problema (derivado, ver services/equipamentoStatus.js)
-      if (gravidade === 'alta' || gravidade === 'critica') {
+      if (GRAVIDADES_GRAVES.includes(gravidade)) {
         const condicaoNova = gravidade === 'critica' || equipamento.condicao === 'quebrado' ? 'quebrado' : 'ruim';
         await runAsync('UPDATE equipamentos SET condicao = ? WHERE id = ?', [condicaoNova, id]);
       }

@@ -10,15 +10,13 @@ const { corsOrigins, trustProxy } = require('./config');
 const app = express();
 
 // IP real do cliente atrás de proxy (necessário para o rate limit funcionar por usuário)
-if (trustProxy !== false) {
-  try {
-    app.set('trust proxy', trustProxy);
-  } catch (error) {
-    throw new Error(
-      `TRUST_PROXY inválido (${JSON.stringify(trustProxy)}): use um número de proxies (ex.: 1), ` +
-      `"loopback"/"uniquelocal" ou uma lista de IPs/sub-redes. ${error.message}`
-    );
-  }
+try {
+  app.set('trust proxy', trustProxy);
+} catch (error) {
+  throw new Error(
+    `TRUST_PROXY inválido (${JSON.stringify(trustProxy)}): use um número de proxies (ex.: 1), ` +
+    `"loopback"/"uniquelocal" ou uma lista de IPs/sub-redes. ${error.message}`
+  );
 }
 
 const PORT = process.env.PORT || 3001;

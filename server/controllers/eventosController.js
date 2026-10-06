@@ -1,6 +1,7 @@
-const { getAsync, allAsync, runAsync } = require('../database/init');
+const { getAsync, allAsync, runAsync, placeholders } = require('../database/init');
 const cache = require('../cache');
 const { recalcularStatus } = require('../services/equipamentoStatus');
+const { inteiro } = require('../services/validacao');
 const {
   AREAS,
   AREAS_RESPONSAVEL,
@@ -10,13 +11,26 @@ const {
   ehEquipeDoEvento
 } = require('../services/eventos');
 
-// Converte "12" / 12 em 12; qualquer outra coisa vira null
-const inteiro = (valor) => {
-  const n = Number(valor);
-  return valor !== null && valor !== '' && valor !== undefined && Number.isInteger(n) ? n : null;
-};
-
 const textoValido = (valor) => typeof valor === 'string' && valor.trim().length > 0;
+
+const MAX_RESPONSAVEIS = 50;
+const MAX_EQUIPAMENTOS_POR_PEDIDO = 200;
+
+// Soma das quantidades alocadas de uma categoria
+const quantidadeNaCategoria = (equipamentosEvento, categoriaId) =>
+  equipamentosEvento
+    .filter((eq) => eq.categoria_id === categoriaId)
+    .reduce((soma, eq) => soma + (eq.quantidade || 1), 0);
+
+// Quais dos ids informados correspondem a usuários ativos (numa única consulta)
+async function usuariosAtivosEntre(ids) {
+  if (ids.length === 0) return new Set();
+  const linhas = await allAsync(
+    `SELECT id FROM usuarios WHERE ativo = 1 AND id IN (${placeholders(ids)})`,
+    ids
+  );
+  return new Set(linhas.map((linha) => linha.id));
+}
 
 // Checklist obrigatório do template: devolve a primeira categoria que não atinge a
 // quantidade mínima, ou null quando está completo.
@@ -30,6 +44,8 @@ async function primeiroItemObrigatorioFaltando(evento) {
     WHERE ct.template_id = ? AND ct.obrigatorio = 1
   `, [evento.template_id]);
 
+  if (checklist.length === 0) return null;
+
   const equipamentosEvento = await allAsync(`
     SELECT ee.*, e.categoria_id
     FROM equipamentos_evento ee
@@ -38,15 +54,44 @@ async function primeiroItemObrigatorioFaltando(evento) {
   `, [evento.id]);
 
   for (const item of checklist) {
-    const qtdAtual = equipamentosEvento
-      .filter(eq => eq.categoria_id === item.categoria_id)
-      .reduce((sum, eq) => sum + (eq.quantidade || 1), 0);
-
+    const qtdAtual = quantidadeNaCategoria(equipamentosEvento, item.categoria_id);
     if (qtdAtual < item.quantidade_minima) {
       return { categoria: item.categoria_nome, atual: qtdAtual, minimo: item.quantidade_minima };
     }
   }
   return null;
+}
+
+// Valida um item do pedido de alocação. Devolve { item } ou { erro }.
+function validarItemDeAlocacao(eq, equipamentosPorId, responsaveisValidos, vistos) {
+  const equipamentoId = inteiro(eq && eq.equipamento_id);
+  if (equipamentoId === null) return { erro: 'equipamento_id inválido' };
+
+  if (vistos.has(equipamentoId)) return { erro: `Equipamento ${equipamentoId} repetido na lista` };
+  vistos.add(equipamentoId);
+
+  const equipamento = equipamentosPorId.get(equipamentoId);
+  if (!equipamento) return { erro: `Equipamento ${equipamentoId} não encontrado` };
+
+  if (equipamento.status !== 'disponivel') {
+    return { erro: `${equipamento.codigo} não está disponível (status: ${equipamento.status})` };
+  }
+
+  const area = eq.area || 'geral';
+  if (!AREAS.includes(area)) return { erro: `${equipamento.codigo}: área inválida "${area}"` };
+
+  const quantidade = eq.quantidade === undefined ? 1 : inteiro(eq.quantidade);
+  if (quantidade === null || quantidade < 1) return { erro: `${equipamento.codigo}: quantidade inválida` };
+
+  let responsavelId = null;
+  if (eq.responsavel_id) {
+    responsavelId = inteiro(eq.responsavel_id);
+    if (responsavelId === null || !responsaveisValidos.has(responsavelId)) {
+      return { erro: `${equipamento.codigo}: responsável ${eq.responsavel_id} não encontrado` };
+    }
+  }
+
+  return { item: { equipamentoId, area, quantidade, responsavelId } };
 }
 
 const eventosController = {
@@ -172,10 +217,15 @@ const eventosController = {
       if (responsaveis !== undefined && !Array.isArray(responsaveis)) {
         return res.status(400).json({ error: 'responsaveis deve ser uma lista' });
       }
+      if ((responsaveis || []).length > MAX_RESPONSAVEIS) {
+        return res.status(400).json({ error: `No máximo ${MAX_RESPONSAVEIS} responsáveis por evento` });
+      }
+
+      const idsResponsaveis = [...new Set((responsaveis || []).map((resp) => inteiro(resp && resp.usuario_id)))];
+      const usuariosValidos = await usuariosAtivosEntre(idsResponsaveis.filter((id) => id !== null));
 
       for (const resp of responsaveis || []) {
-        const usuarioId = inteiro(resp && resp.usuario_id);
-        if (usuarioId === null || !(await getAsync('SELECT id FROM usuarios WHERE id = ? AND ativo = 1', [usuarioId]))) {
+        if (!usuariosValidos.has(inteiro(resp && resp.usuario_id))) {
           return res.status(400).json({ error: `Responsável ${resp && resp.usuario_id} não encontrado` });
         }
         if (!AREAS_RESPONSAVEL.includes(resp.area)) {
@@ -221,8 +271,8 @@ const eventosController = {
         return res.status(400).json({ error: 'Lista de equipamentos vazia' });
       }
 
-      if (equipamentos.length > 200) {
-        return res.status(400).json({ error: 'No máximo 200 equipamentos por requisição' });
+      if (equipamentos.length > MAX_EQUIPAMENTOS_POR_PEDIDO) {
+        return res.status(400).json({ error: `No máximo ${MAX_EQUIPAMENTOS_POR_PEDIDO} equipamentos por requisição` });
       }
 
       const evento = await getAsync('SELECT * FROM eventos WHERE id = ?', [id]);
@@ -239,57 +289,26 @@ const eventosController = {
         return res.status(403).json({ error: 'Apenas coordenadores, o criador ou os responsáveis do evento podem alocar equipamentos' });
       }
 
+      // Equipamentos e responsáveis do pedido são buscados de uma vez (não um por item)
+      const idsEquipamentos = [...new Set(equipamentos.map((eq) => inteiro(eq && eq.equipamento_id)).filter((v) => v !== null))];
+      const idsResponsaveis = [...new Set(equipamentos.map((eq) => inteiro(eq && eq.responsavel_id)).filter((v) => v !== null))];
+
+      const linhasEquipamentos = idsEquipamentos.length === 0 ? [] : await allAsync(
+        `SELECT id, codigo, status FROM equipamentos WHERE id IN (${placeholders(idsEquipamentos)})`,
+        idsEquipamentos
+      );
+      const equipamentosPorId = new Map(linhasEquipamentos.map((eq) => [eq.id, eq]));
+      const responsaveisValidos = await usuariosAtivosEntre(idsResponsaveis);
+
       // Valida o lote inteiro antes de gravar: ou entra tudo, ou nada
       const problemas = [];
       const vistos = new Set();
       const itens = [];
 
       for (const eq of equipamentos) {
-        const equipamentoId = inteiro(eq && eq.equipamento_id);
-        if (equipamentoId === null) {
-          problemas.push('equipamento_id inválido');
-          continue;
-        }
-
-        if (vistos.has(equipamentoId)) {
-          problemas.push(`Equipamento ${equipamentoId} repetido na lista`);
-          continue;
-        }
-        vistos.add(equipamentoId);
-
-        const equipamento = await getAsync('SELECT id, codigo, status FROM equipamentos WHERE id = ?', [equipamentoId]);
-        if (!equipamento) {
-          problemas.push(`Equipamento ${equipamentoId} não encontrado`);
-          continue;
-        }
-
-        if (equipamento.status !== 'disponivel') {
-          problemas.push(`${equipamento.codigo} não está disponível (status: ${equipamento.status})`);
-          continue;
-        }
-
-        const area = eq.area || 'geral';
-        if (!AREAS.includes(area)) {
-          problemas.push(`${equipamento.codigo}: área inválida "${area}"`);
-          continue;
-        }
-
-        const quantidade = eq.quantidade === undefined ? 1 : inteiro(eq.quantidade);
-        if (quantidade === null || quantidade < 1) {
-          problemas.push(`${equipamento.codigo}: quantidade inválida`);
-          continue;
-        }
-
-        let responsavelId = null;
-        if (eq.responsavel_id) {
-          responsavelId = inteiro(eq.responsavel_id);
-          if (responsavelId === null || !(await getAsync('SELECT id FROM usuarios WHERE id = ? AND ativo = 1', [responsavelId]))) {
-            problemas.push(`${equipamento.codigo}: responsável ${eq.responsavel_id} não encontrado`);
-            continue;
-          }
-        }
-
-        itens.push({ equipamentoId, area, quantidade, responsavelId });
+        const resultado = validarItemDeAlocacao(eq, equipamentosPorId, responsaveisValidos, vistos);
+        if (resultado.erro) problemas.push(resultado.erro);
+        else itens.push(resultado.item);
       }
 
       if (problemas.length > 0) {
@@ -357,9 +376,7 @@ const eventosController = {
 
       // Verificar cada item do checklist
       for (const item of checklist) {
-        const qtdAtual = equipamentosEvento
-          .filter(eq => eq.categoria_id === item.categoria_id)
-          .reduce((sum, eq) => sum + (eq.quantidade || 1), 0);
+        const qtdAtual = quantidadeNaCategoria(equipamentosEvento, item.categoria_id);
 
         if (qtdAtual < item.quantidade_minima) {
           const aviso = {
@@ -412,8 +429,8 @@ const eventosController = {
         return res.status(400).json({ error: `O evento já está com o status "${status}"` });
       }
 
-      if (!TRANSICOES_STATUS[evento.status].includes(status)) {
-        const permitidas = TRANSICOES_STATUS[evento.status];
+      const permitidas = TRANSICOES_STATUS[evento.status];
+      if (!permitidas.includes(status)) {
         return res.status(400).json({
           error: permitidas.length
             ? `Não é possível passar de "${evento.status}" para "${status}". Opções: ${permitidas.join(', ')}`
@@ -459,7 +476,7 @@ const eventosController = {
       // Evento encerrado: as alocações são devolvidas e os equipamentos liberados
       // (cada um volta ao status que de fato lhe cabe: disponível, com problema, em
       // transferência, em manutenção ou ainda alocado em outro evento)
-      if (status === 'concluido' || status === 'cancelado') {
+      if (TRANSICOES_STATUS[status].length === 0) {
         const alocados = await allAsync(
           "SELECT DISTINCT equipamento_id FROM equipamentos_evento WHERE evento_id = ? AND status != 'devolvido'",
           [id]

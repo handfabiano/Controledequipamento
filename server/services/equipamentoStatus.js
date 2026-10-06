@@ -10,75 +10,86 @@
 //   4. caso contrário                               -> disponivel
 // "manutencao" é decisão manual e nunca é sobrescrita automaticamente.
 
-const { getAsync, runAsync } = require('../database/init');
+const { getAsync, runAsync, placeholders } = require('../database/init');
+const { STATUS_TRANSFERENCIA_ATIVA } = require('./transferencias');
+const { STATUS_EVENTO_ATIVO } = require('./eventos');
 
-const STATUS_TRANSFERENCIA_ATIVA = ['pendente', 'aprovada_coordenador', 'em_transito'];
-const STATUS_EVENTO_ATIVO = ['planejamento', 'aprovado', 'em_andamento'];
+const STATUS_EQUIPAMENTO = ['disponivel', 'em_uso', 'com_problema', 'transferencia', 'manutencao'];
+// Os únicos que o usuário define; os demais são derivados
+const STATUS_MANUAIS = ['disponivel', 'manutencao'];
+
 const GRAVIDADES_GRAVES = ['alta', 'critica'];
 
-const lista = (valores) => valores.map(() => '?').join(', ');
+// A prioridade acima, calculada pelo banco numa única consulta
+const SQL_STATUS_DERIVADO = `CASE
+  WHEN EXISTS (SELECT 1 FROM problemas_equipamentos p
+               WHERE p.equipamento_id = e.id AND p.resolvido = 0
+                 AND p.gravidade IN (${placeholders(GRAVIDADES_GRAVES)})) THEN 'com_problema'
+  WHEN EXISTS (SELECT 1 FROM transferencias t
+               WHERE t.equipamento_id = e.id
+                 AND t.status IN (${placeholders(STATUS_TRANSFERENCIA_ATIVA)})) THEN 'transferencia'
+  WHEN EXISTS (SELECT 1 FROM equipamentos_evento ee JOIN eventos ev ON ev.id = ee.evento_id
+               WHERE ee.equipamento_id = e.id AND ee.status != 'devolvido'
+                 AND ev.status IN (${placeholders(STATUS_EVENTO_ATIVO)})) THEN 'em_uso'
+  ELSE 'disponivel'
+END`;
 
+const PARAMS_STATUS_DERIVADO = [...GRAVIDADES_GRAVES, ...STATUS_TRANSFERENCIA_ATIVA, ...STATUS_EVENTO_ATIVO];
+
+// { atual, novo } do equipamento, ou undefined se não existe
+const consultarStatus = (equipamentoId) =>
+  getAsync(
+    `SELECT e.status AS atual, ${SQL_STATUS_DERIVADO} AS novo FROM equipamentos e WHERE e.id = ?`,
+    [...PARAMS_STATUS_DERIVADO, equipamentoId]
+  );
+
+// Status que o equipamento deve ter agora (null se não existe), sem gravar nada
 async function calcularStatus(equipamentoId) {
-  const problemaGrave = await getAsync(
-    `SELECT id FROM problemas_equipamentos
-     WHERE equipamento_id = ? AND resolvido = 0 AND gravidade IN (${lista(GRAVIDADES_GRAVES)})
-     LIMIT 1`,
-    [equipamentoId, ...GRAVIDADES_GRAVES]
-  );
-  if (problemaGrave) return 'com_problema';
-
-  const transferencia = await getAsync(
-    `SELECT id FROM transferencias
-     WHERE equipamento_id = ? AND status IN (${lista(STATUS_TRANSFERENCIA_ATIVA)})
-     LIMIT 1`,
-    [equipamentoId, ...STATUS_TRANSFERENCIA_ATIVA]
-  );
-  if (transferencia) return 'transferencia';
-
-  const alocacao = await getAsync(
-    `SELECT ee.id FROM equipamentos_evento ee
-     JOIN eventos ev ON ev.id = ee.evento_id
-     WHERE ee.equipamento_id = ? AND ee.status != 'devolvido'
-       AND ev.status IN (${lista(STATUS_EVENTO_ATIVO)})
-     LIMIT 1`,
-    [equipamentoId, ...STATUS_EVENTO_ATIVO]
-  );
-  if (alocacao) return 'em_uso';
-
-  return 'disponivel';
+  const consulta = await consultarStatus(equipamentoId);
+  return consulta ? consulta.novo : null;
 }
 
 // Recalcula e grava o status. Devolve o status final (ou null se o equipamento não existe).
 async function recalcularStatus(equipamentoId) {
-  const equipamento = await getAsync('SELECT status FROM equipamentos WHERE id = ?', [equipamentoId]);
-  if (!equipamento) return null;
-  if (equipamento.status === 'manutencao') return 'manutencao';
+  const consulta = await consultarStatus(equipamentoId);
+  if (!consulta) return null;
+  if (consulta.atual === 'manutencao') return 'manutencao';
 
-  const novoStatus = await calcularStatus(equipamentoId);
-  if (novoStatus !== equipamento.status) {
+  if (consulta.novo !== consulta.atual) {
     await runAsync(
       'UPDATE equipamentos SET status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?',
-      [novoStatus, equipamentoId]
+      [consulta.novo, equipamentoId]
     );
   }
-  return novoStatus;
+  return consulta.novo;
 }
 
 async function temProblemaGrave(equipamentoId) {
   const problema = await getAsync(
     `SELECT id FROM problemas_equipamentos
-     WHERE equipamento_id = ? AND resolvido = 0 AND gravidade IN (${lista(GRAVIDADES_GRAVES)})
+     WHERE equipamento_id = ? AND resolvido = 0 AND gravidade IN (${placeholders(GRAVIDADES_GRAVES)})
      LIMIT 1`,
     [equipamentoId, ...GRAVIDADES_GRAVES]
   );
   return Boolean(problema);
 }
 
+async function temTransferenciaAtiva(equipamentoId) {
+  const transferencia = await getAsync(
+    `SELECT id FROM transferencias
+     WHERE equipamento_id = ? AND status IN (${placeholders(STATUS_TRANSFERENCIA_ATIVA)})
+     LIMIT 1`,
+    [equipamentoId, ...STATUS_TRANSFERENCIA_ATIVA]
+  );
+  return Boolean(transferencia);
+}
+
 module.exports = {
-  STATUS_TRANSFERENCIA_ATIVA,
-  STATUS_EVENTO_ATIVO,
+  STATUS_EQUIPAMENTO,
+  STATUS_MANUAIS,
   GRAVIDADES_GRAVES,
   calcularStatus,
   recalcularStatus,
-  temProblemaGrave
+  temProblemaGrave,
+  temTransferenciaAtiva
 };

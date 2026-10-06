@@ -1,4 +1,5 @@
 const { body, query, param, validationResult } = require('express-validator');
+const { STATUS_EQUIPAMENTO } = require('../services/equipamentoStatus');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -24,7 +25,7 @@ const listarEquipamentos = [
 
   query('status')
     .optional({ values: 'falsy' })
-    .isIn(['disponivel', 'em_uso', 'manutencao', 'com_problema', 'transferencia'])
+    .isIn(STATUS_EQUIPAMENTO)
     .withMessage('Status inválido'),
 
   query('categoria_id')
@@ -127,7 +128,7 @@ const atualizarEquipamento = [
 
   body('status')
     .optional()
-    .isIn(['disponivel', 'em_uso', 'manutencao', 'com_problema', 'transferencia'])
+    .isIn(STATUS_EQUIPAMENTO)
     .withMessage('Status inválido'),
 
   body('condicao')

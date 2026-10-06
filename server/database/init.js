@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
-const { usePostgres, runAsync, getAsync, allAsync } = require('./db');
+const { usePostgres, runAsync, getAsync, allAsync, placeholders } = require('./db');
 
 // Seed de demonstração: ativo por padrão fora de produção,
 // ou quando SEED_DEMO_DATA=true for definido explicitamente.
@@ -181,5 +181,6 @@ module.exports = {
   allAsync,
   gerarTombamento,
   gerarCodigo,
+  placeholders,
   usePostgres
 };
