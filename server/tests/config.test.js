@@ -78,3 +78,16 @@ test('em produção sem JWT_SECRET o servidor não sobe', () => {
     /JWT_SECRET/
   );
 });
+
+test('usuários de demonstração só nascem em desenvolvimento/teste ou com SEED_DEMO_DATA=true', () => {
+  const semear = (env) => lerConfig(env).seedDemoData;
+
+  assert.strictEqual(semear({}), false, 'sem NODE_ENV não semeia (falha segura)');
+  assert.strictEqual(semear({ NODE_ENV: 'production' }), false);
+  assert.strictEqual(semear({ NODE_ENV: 'staging' }), false);
+  assert.strictEqual(semear({ NODE_ENV: 'development' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'test' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'development', SEED_DEMO_DATA: 'false' }), false);
+  assert.strictEqual(semear({ SEED_DEMO_DATA: 'true' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'production', SEED_DEMO_DATA: 'true' }), true);
+});

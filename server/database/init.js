@@ -1,13 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 const { hashSenha } = require('../services/senhas');
+const { seedDemoData } = require('../config');
 const { usePostgres, runAsync, getAsync, allAsync, placeholders } = require('./db');
 
-// Seed de demonstração: ativo por padrão fora de produção,
-// ou quando SEED_DEMO_DATA=true for definido explicitamente.
-const seedHabilitado =
-  process.env.SEED_DEMO_DATA === 'true' ||
-  (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA !== 'false');
 
 async function initializeDatabase() {
   try {
@@ -27,7 +23,7 @@ async function initializeDatabase() {
 
     const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
 
-    if (userCount.count === 0 && seedHabilitado) {
+    if (userCount.count === 0 && seedDemoData) {
       console.log('Inserindo dados iniciais de demonstração...');
       await insertInitialData();
       console.log('Dados iniciais inseridos com sucesso!');

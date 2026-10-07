@@ -65,14 +65,17 @@ function Login() {
           </button>
         </form>
 
-        <div className="login-footer">
-          <p>Credenciais de teste:</p>
-          <ul>
-            <li>coordenador@sistema.com / 123456</li>
-            <li>joao@sistema.com / 123456</li>
-            <li>maria@sistema.com / 123456</li>
-          </ul>
-        </div>
+        {/* Só no servidor de desenvolvimento: em produção o seed não cria esses usuários */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="login-footer">
+            <p>Credenciais de teste:</p>
+            <ul>
+              <li>coordenador@sistema.com / 123456</li>
+              <li>joao@sistema.com / 123456</li>
+              <li>maria@sistema.com / 123456</li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

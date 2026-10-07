@@ -34,6 +34,9 @@ jobs:
         run: npm test
 
       - name: Smoke test (SQLite)
+        env:
+          # O login abaixo usa o coordenador de demonstração; fora de dev/test o seed é opt-in
+          SEED_DEMO_DATA: 'true'
         run: |
           PORT=3101 node server/index.js &
           SERVER_PID=$!

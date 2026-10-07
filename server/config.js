@@ -59,8 +59,24 @@ function inteiroPositivo(valor, padrao) {
 const rateLimitMax = inteiroPositivo(process.env.RATE_LIMIT_MAX, 300);
 const loginRateLimitMax = inteiroPositivo(process.env.LOGIN_RATE_LIMIT_MAX, 5);
 
+// Usuários de demonstração têm senha conhecida (123456, inclusive um coordenador), então só
+// nascem quando o ambiente é de desenvolvimento/teste ou quando SEED_DEMO_DATA=true pede
+// explicitamente. Sem NODE_ENV (o padrão do Node) o servidor NÃO semeia: falha segura.
+// SEED_DEMO_DATA=false desliga mesmo em desenvolvimento.
+const seedDemoData =
+  process.env.SEED_DEMO_DATA === 'true' ||
+  (['development', 'test'].includes(process.env.NODE_ENV) && process.env.SEED_DEMO_DATA !== 'false');
+
+if (seedDemoData && isProduction) {
+  console.warn(
+    'AVISO: SEED_DEMO_DATA=true em produção — usuários de demonstração com senha conhecida serão criados ' +
+    'em banco vazio. Use apenas para testes e troque as senhas em seguida.'
+  );
+}
+
 module.exports = {
   isProduction,
+  seedDemoData,
   jwtSecret,
   corsOrigins,
   trustProxy,

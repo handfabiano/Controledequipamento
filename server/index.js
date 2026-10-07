@@ -5,7 +5,8 @@ const bodyParser = require('body-parser');
 const { initializeDatabase } = require('./database/init');
 const routes = require('./routes');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
-const { corsOrigins, trustProxy } = require('./config');
+const { corsOrigins, trustProxy, seedDemoData } = require('./config');
+const { montarBanner } = require('./banner');
 const { registrarAcessosNegados } = require('./services/seguranca');
 const { cabecalhosDeSeguranca } = require('./middleware/cabecalhos');
 
@@ -105,21 +106,7 @@ async function start() {
     await ensureDatabase();
 
     app.listen(PORT, () => {
-      console.log(`
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║  Sistema de Gestão de Equipamentos de Som e Iluminação      ║
-║                                                              ║
-║  Servidor rodando na porta ${PORT}                              ║
-║  API disponível em: http://localhost:${PORT}/api               ║
-║                                                              ║
-║  Credenciais de teste:                                      ║
-║  - coordenador@sistema.com / 123456                          ║
-║  - joao@sistema.com / 123456                                 ║
-║  - maria@sistema.com / 123456                                ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-      `);
+      console.log(montarBanner({ porta: PORT, credenciaisDemo: seedDemoData }));
     });
   } catch (error) {
     console.error('Erro ao iniciar servidor:', error);
