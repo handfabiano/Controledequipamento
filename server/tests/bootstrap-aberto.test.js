@@ -10,7 +10,8 @@ let srv;
 test.before(async () => { srv = await iniciarServidor(); });
 test.after(() => srv.fechar());
 
-test('sem BOOTSTRAP_TOKEN o primeiro usuário se cadastra livremente', async () => {
+test('sem BOOTSTRAP_TOKEN o primeiro usuário se cadastra livremente, e só ele', async () => {
   const body = { nome: 'Dono', email: 'dono@x.com', senha: SENHA_VALIDA, tipo: 'coordenador' };
   assert.strictEqual((await srv.req('POST', '/api/auth/register', { body })).status, 201);
+  assert.strictEqual((await srv.req('POST', '/api/auth/register', { body: { ...body, email: 'b@x.com' } })).status, 401);
 });

@@ -31,7 +31,11 @@ test('com o token inicial certo o primeiro coordenador é criado (e prova que na
   assert.strictEqual(r.status, 201);
 });
 
-test('depois do primeiro usuário o token inicial não abre mais o cadastro', async () => {
-  const r = await cadastro('outro@x.com', { headers: { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' } });
-  assert.strictEqual(r.status, 401, 'agora só coordenador autenticado cadastra');
+test('depois do primeiro usuário o token inicial não abre mais o cadastro; coordenador autenticado cadastra', async () => {
+  const comTokenInicial = await cadastro('outro@x.com', { headers: { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' } });
+  assert.strictEqual(comTokenInicial.status, 401);
+  assert.match(comTokenInicial.body.error, /coordenadores/i, 'recusado pela regra de coordenador, não pela do token inicial');
+
+  const token = await srv.login('dono@x.com', SENHA_VALIDA);
+  assert.strictEqual((await cadastro('outro@x.com', { token })).status, 201);
 });
