@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { equipamentos } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import QRScanner from '../components/QRScanner';
 import './Equipamentos.css';
 
 function Equipamentos() {
+  const { isGestor } = useAuth();
   const [equipamentosList, setEquipamentosList] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -185,9 +187,11 @@ function Equipamentos() {
           <button className="btn btn-secondary" onClick={() => setShowScanner(true)}>
             📷 Escanear QR
           </button>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            + Novo Equipamento
-          </button>
+          {isGestor() && (
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+              + Novo Equipamento
+            </button>
+          )}
         </div>
       </div>
 

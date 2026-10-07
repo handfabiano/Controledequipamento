@@ -14,6 +14,11 @@ const dashboardController = require('../controllers/dashboardController');
 // Validators
 const equipamentoValidator = require('../validators/equipamentoValidator');
 
+// Quem cadastra/edita equipamentos, resolve problemas e cria eventos. O técnico enxerga tudo,
+// reporta problemas e participa das transferências/eventos em que está envolvido, mas não altera
+// o cadastro nem libera equipamento com problema.
+const gestor = checkRole('coordenador', 'responsavel_entrega', 'responsavel_recebimento');
+
 // Rotas de autenticação (públicas)
 router.post('/auth/login', authLimiter, authController.login);
 router.post('/auth/register', authController.register);
@@ -26,10 +31,10 @@ router.get('/equipamentos/tombamento/:tombamento', authMiddleware, equipamentoVa
 router.get('/equipamentos/:id', authMiddleware, equipamentoValidator.buscarPorId, equipamentosController.buscarPorId);
 router.get('/equipamentos/:id/qrcode', authMiddleware, equipamentoValidator.buscarPorId, equipamentosController.gerarQRCode);
 router.get('/equipamentos/:id/etiqueta', authMiddleware, equipamentoValidator.buscarPorId, equipamentosController.gerarEtiqueta);
-router.post('/equipamentos', authMiddleware, equipamentoValidator.criarEquipamento, equipamentosController.criar);
-router.put('/equipamentos/:id', authMiddleware, equipamentoValidator.atualizarEquipamento, equipamentosController.atualizar);
+router.post('/equipamentos', authMiddleware, gestor, equipamentoValidator.criarEquipamento, equipamentosController.criar);
+router.put('/equipamentos/:id', authMiddleware, gestor, equipamentoValidator.atualizarEquipamento, equipamentosController.atualizar);
 router.post('/equipamentos/:id/problemas', authMiddleware, equipamentoValidator.reportarProblema, equipamentosController.reportarProblema);
-router.put('/equipamentos/:id/problemas/:problemaId/resolver', authMiddleware, equipamentosController.resolverProblema);
+router.put('/equipamentos/:id/problemas/:problemaId/resolver', authMiddleware, gestor, equipamentosController.resolverProblema);
 
 // Rotas de transferências
 router.get('/transferencias', authMiddleware, transferenciasController.listar);
@@ -46,7 +51,7 @@ router.post('/transferencias/:id/cancelar', authMiddleware, transferenciasContro
 router.get('/eventos', authMiddleware, eventosController.listar);
 router.get('/eventos/templates', authMiddleware, eventosController.listarTemplates);
 router.get('/eventos/:id', authMiddleware, eventosController.buscarPorId);
-router.post('/eventos', authMiddleware, eventosController.criar);
+router.post('/eventos', authMiddleware, gestor, eventosController.criar);
 router.post('/eventos/:id/equipamentos', authMiddleware, eventosController.adicionarEquipamentos);
 router.get('/eventos/:id/validar-checklist', authMiddleware, eventosController.validarChecklist);
 router.put('/eventos/:id/status', authMiddleware, eventosController.atualizarStatus);

@@ -285,7 +285,9 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 - Conexão com o Postgres via TLS; `DATABASE_SSL_VERIFY=true` passa a verificar o certificado do servidor
 - Primeiro cadastro (banco vazio) protegido por `BOOTSTRAP_TOKEN` opcional (cabeçalho `X-Bootstrap-Token`)
 - Middleware de autenticação em todas as rotas protegidas
-- Autorização no servidor por perfil e por envolvimento (transferências, eventos)
+- Autorização no servidor por perfil e por envolvimento (transferências, eventos). Cadastrar/editar
+  equipamentos, resolver problemas e criar eventos: só coordenador e responsáveis (entrega e
+  recebimento); o técnico vê tudo, reporta problemas e atua nas transferências/eventos em que está envolvido
 - Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP
   real exige `TRUST_PROXY` (padrão: 1 hop na Vercel)
 - HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy

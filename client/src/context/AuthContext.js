@@ -45,6 +45,8 @@ export const AuthProvider = ({ children }) => {
   const isCoordenador = () => user?.tipo === 'coordenador';
   const isResponsavelEntrega = () => user?.tipo === 'responsavel_entrega';
   const isResponsavelRecebimento = () => user?.tipo === 'responsavel_recebimento';
+  // Coordenador e responsáveis cadastram equipamentos e eventos; o servidor é quem impõe isso
+  const isGestor = () => isCoordenador() || isResponsavelEntrega() || isResponsavelRecebimento();
 
   return (
     <AuthContext.Provider
@@ -56,6 +58,7 @@ export const AuthProvider = ({ children }) => {
         isCoordenador,
         isResponsavelEntrega,
         isResponsavelRecebimento,
+        isGestor,
         isAuthenticated: !!user
       }}
     >

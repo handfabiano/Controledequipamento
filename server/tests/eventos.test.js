@@ -100,10 +100,10 @@ test('status: transições válidas, permissões e estados finais', async () => 
 });
 
 test('o criador do evento pode cancelá-lo; outros técnicos não', async () => {
-  const meu = await criarEvento({}, t.tecnico);
+  const meu = await criarEvento({}, t.recebimento);
   assert.strictEqual((await status(meu, 'cancelado', tecnico2)).status, 403);
-  assert.strictEqual((await status(meu, 'aprovado', t.tecnico)).status, 403, 'criador não aprova');
-  assert.strictEqual((await status(meu, 'cancelado', t.tecnico)).status, 200);
+  assert.strictEqual((await status(meu, 'aprovado', t.recebimento)).status, 403, 'criador não aprova');
+  assert.strictEqual((await status(meu, 'cancelado', t.recebimento)).status, 200);
   assert.strictEqual((await evento(meu)).status, 'cancelado');
 });
 
@@ -138,9 +138,9 @@ test('alocar equipamentos: marca em_uso e exige permissão', async () => {
 });
 
 test('alocar: responsáveis cadastrados e o criador do evento podem alocar', async () => {
-  const doTecnico = await criarEvento({}, t.tecnico);
+  const doCriador = await criarEvento({}, t.recebimento);
   const eq1 = await novoEquipamento();
-  assert.strictEqual((await alocar(doTecnico, [eq1], t.tecnico)).status, 200, 'criador');
+  assert.strictEqual((await alocar(doCriador, [eq1], t.recebimento)).status, 200, 'criador');
 
   const comResponsavel = await criarEvento({
     responsaveis: [{ usuario_id: USUARIOS.entrega.id, area: 'som', tipo: 'entrega' }]
