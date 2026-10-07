@@ -4,6 +4,8 @@
 // Ambos expõem a mesma interface: runAsync, getAsync, allAsync.
 // As queries usam placeholders `?`; no Postgres eles são convertidos para $1, $2...
 
+const { opcoesSsl } = require('./ssl');
+
 const usePostgres = Boolean(process.env.DATABASE_URL);
 
 let runAsync;
@@ -17,11 +19,18 @@ if (usePostgres) {
   types.setTypeParser(20, (value) => parseInt(value, 10));
 
   const connectionString = process.env.DATABASE_URL;
-  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  const ssl = opcoesSsl(connectionString);
+
+  if (ssl && !ssl.rejectUnauthorized) {
+    console.warn(
+      'AVISO: conexão com o Postgres criptografada, mas o certificado do servidor não é verificado. ' +
+      'Defina DATABASE_SSL_VERIFY=true (e DATABASE_SSL_CA, se o provedor usar CA própria).'
+    );
+  }
 
   const pool = new Pool({
     connectionString,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ssl,
     // Ambiente serverless: manter o pool pequeno
     max: parseInt(process.env.PG_POOL_MAX || '3', 10)
   });

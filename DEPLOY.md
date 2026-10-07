@@ -32,6 +32,8 @@ Variáveis opcionais:
 ```
 BOOTSTRAP_TOKEN=...    # Segredo exigido no primeiro cadastro em banco vazio (recomendado em produção)
 SEED_DEMO_DATA=true    # Insere usuários/equipamentos de demonstração no primeiro boot (NÃO use em produção real)
+DATABASE_SSL_VERIFY=true  # Verifica o certificado TLS do Postgres (padrão: criptografa sem verificar)
+DATABASE_SSL_CA=...    # Certificado da CA em PEM (\n no lugar das quebras), se o provedor usar CA própria
 PG_POOL_MAX=3          # Tamanho do pool de conexões Postgres
 TRUST_PROXY=1          # Proxies confiáveis à frente do app (padrão: 1 na Vercel, desligado fora dela)
 RATE_LIMIT_MAX=300     # Requisições por IP a cada 15 min na API (padrão: 300)

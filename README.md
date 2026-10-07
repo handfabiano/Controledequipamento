@@ -282,6 +282,7 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 - Autenticação via JWT; e-mails comparados sem diferenciar maiúsculas/minúsculas
 - Senhas criptografadas com bcrypt; novas senhas: mínimo de 8 caracteres (máx. 72 bytes) e sem senhas
   comuns/previsíveis (`server/services/senhas.js`)
+- Conexão com o Postgres via TLS; `DATABASE_SSL_VERIFY=true` passa a verificar o certificado do servidor
 - Primeiro cadastro (banco vazio) protegido por `BOOTSTRAP_TOKEN` opcional (cabeçalho `X-Bootstrap-Token`)
 - Middleware de autenticação em todas as rotas protegidas
 - Autorização no servidor por perfil e por envolvimento (transferências, eventos)
