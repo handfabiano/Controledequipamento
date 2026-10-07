@@ -1,5 +1,9 @@
 # Atualizações automáticas de dependências: o Dependabot abre PRs semanais
 # para o backend, o frontend e as actions do CI, e avisa de vulnerabilidades conhecidas.
+#
+# Versões major ficam de fora por enquanto (express 5, react 19, react-router 7 etc. exigem
+# migração e teste de interface, não são só "aceitar o PR"). Para migrar uma delas, remova a
+# regra "ignore" do ecossistema correspondente.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,6 +13,9 @@ updates:
     groups:
       backend-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /client
@@ -17,8 +24,14 @@ updates:
     groups:
       client-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

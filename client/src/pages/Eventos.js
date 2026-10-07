@@ -14,7 +14,7 @@ const PROXIMA_ETAPA = {
 };
 
 function Eventos() {
-  const { user, isCoordenador } = useAuth();
+  const { user, isCoordenador, isGestor } = useAuth();
   const [eventosList, setEventosList] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,9 +170,11 @@ function Eventos() {
     <div className="eventos-page">
       <div className="page-header">
         <h1>Gestão de Eventos</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          + Novo Evento
-        </button>
+        {isGestor() && (
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            + Novo Evento
+          </button>
+        )}
       </div>
 
       <div className="info-box card">

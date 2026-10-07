@@ -30,7 +30,10 @@ CORS_ORIGIN=https://seu-app.vercel.app             # Recomendado
 Variáveis opcionais:
 
 ```
+BOOTSTRAP_TOKEN=...    # Segredo exigido no primeiro cadastro em banco vazio (recomendado em produção)
 SEED_DEMO_DATA=true    # Insere usuários/equipamentos de demonstração no primeiro boot (NÃO use em produção real)
+DATABASE_SSL_VERIFY=true  # Verifica o certificado TLS do Postgres (padrão: criptografa sem verificar)
+DATABASE_SSL_CA=...    # Certificado da CA em PEM (\n no lugar das quebras), se o provedor usar CA própria
 PG_POOL_MAX=3          # Tamanho do pool de conexões Postgres
 TRUST_PROXY=1          # Proxies confiáveis à frente do app (padrão: 1 na Vercel, desligado fora dela)
 RATE_LIMIT_MAX=300     # Requisições por IP a cada 15 min na API (padrão: 300)
@@ -64,9 +67,21 @@ O schema é criado automaticamente no primeiro boot (`CREATE TABLE IF NOT EXISTS
 
 ### Primeiro acesso (banco vazio)
 
-Com o banco vazio e `SEED_DEMO_DATA` desativado, o **primeiro usuário** pode se registrar
-livremente via `POST /api/auth/register` (bootstrap). A partir do segundo usuário, apenas
-coordenadores autenticados podem registrar novos usuários.
+Com o banco vazio e `SEED_DEMO_DATA` desativado (o padrão em produção), o **primeiro usuário**
+é criado via `POST /api/auth/register` (não há tela de cadastro). A partir do segundo usuário,
+apenas coordenadores autenticados podem registrar novos usuários.
+
+**Defina `BOOTSTRAP_TOKEN` antes do primeiro deploy.** Sem ele, quem chamar o endpoint primeiro
+vira coordenador. Com ele, o primeiro cadastro precisa do cabeçalho `X-Bootstrap-Token`:
+
+```bash
+curl -X POST https://SEU-APP.vercel.app/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -H 'X-Bootstrap-Token: <o valor de BOOTSTRAP_TOKEN>' \
+  -d '{"nome":"Seu Nome","email":"voce@exemplo.com","senha":"uma-senha-forte","tipo":"coordenador"}'
+```
+
+Depois do primeiro usuário o token deixa de ter efeito (pode ser removido das variáveis).
 
 ## Arquivos de Configuração
 

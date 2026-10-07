@@ -1,19 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { rodarNoServidor } = require('./processo-filho');
 
 // config.js lê o ambiente ao ser carregado, então cada caso roda em um processo filho
 function lerConfig(env) {
-  const saida = execFileSync(
-    process.execPath,
-    ['-e', "console.log(JSON.stringify(require('./config')))"],
-    {
-      cwd: path.join(__dirname, '..'),
-      env: { PATH: process.env.PATH, JWT_SECRET: 'x', ...env },
-      encoding: 'utf8'
-    }
-  );
+  const saida = rodarNoServidor("console.log(JSON.stringify(require('./config')))", env);
   return JSON.parse(saida.trim().split('\n').pop());
 }
 
@@ -77,4 +69,17 @@ test('em produção sem JWT_SECRET o servidor não sobe', () => {
     () => lerConfig({ JWT_SECRET: '', NODE_ENV: 'production' }),
     /JWT_SECRET/
   );
+});
+
+test('usuários de demonstração só nascem em desenvolvimento/teste ou com SEED_DEMO_DATA=true', () => {
+  const semear = (env) => lerConfig(env).seedDemoData;
+
+  assert.strictEqual(semear({}), false, 'sem NODE_ENV não semeia (falha segura)');
+  assert.strictEqual(semear({ NODE_ENV: 'production' }), false);
+  assert.strictEqual(semear({ NODE_ENV: 'staging' }), false);
+  assert.strictEqual(semear({ NODE_ENV: 'development' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'test' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'development', SEED_DEMO_DATA: 'false' }), false);
+  assert.strictEqual(semear({ SEED_DEMO_DATA: 'true' }), true);
+  assert.strictEqual(semear({ NODE_ENV: 'production', SEED_DEMO_DATA: 'true' }), true);
 });

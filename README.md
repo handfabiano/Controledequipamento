@@ -118,9 +118,10 @@ npm start
 
 ## Credenciais de Teste
 
-Em desenvolvimento (ou com `SEED_DEMO_DATA=true`), o sistema insere usuários de teste
-no primeiro boot. **Em produção o seed é desativado por padrão** — o primeiro usuário
-se registra livremente e, a partir daí, apenas coordenadores podem registrar novos usuários.
+Com `NODE_ENV=development` (já definido por `npm run dev`) ou com `SEED_DEMO_DATA=true`, o
+sistema insere usuários de teste no primeiro boot em banco vazio. **Sem `NODE_ENV` e em produção
+o seed fica desativado** — o primeiro usuário se registra via API e, a partir daí, apenas
+coordenadores podem registrar novos usuários (ver `DEPLOY.md`).
 
 | Email | Senha | Tipo |
 |-------|-------|------|
@@ -281,8 +282,12 @@ sobrescrita automaticamente; voltar para `disponivel` recalcula o status real.
 - Autenticação via JWT; e-mails comparados sem diferenciar maiúsculas/minúsculas
 - Senhas criptografadas com bcrypt; novas senhas: mínimo de 8 caracteres (máx. 72 bytes) e sem senhas
   comuns/previsíveis (`server/services/senhas.js`)
+- Conexão com o Postgres via TLS; `DATABASE_SSL_VERIFY=true` passa a verificar o certificado do servidor
+- Primeiro cadastro (banco vazio) protegido por `BOOTSTRAP_TOKEN` opcional (cabeçalho `X-Bootstrap-Token`)
 - Middleware de autenticação em todas as rotas protegidas
-- Autorização no servidor por perfil e por envolvimento (transferências, eventos)
+- Autorização no servidor por perfil e por envolvimento (transferências, eventos). Cadastrar/editar
+  equipamentos, resolver problemas e criar eventos: só coordenador e responsáveis (entrega e
+  recebimento); o técnico vê tudo, reporta problemas e atua nas transferências/eventos em que está envolvido
 - Rate limit por IP (`RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_MAX`); atrás de proxy/Vercel o IP
   real exige `TRUST_PROXY` (padrão: 1 hop na Vercel)
 - HTML gerado (etiquetas) com escape dos dados e Content-Security-Policy

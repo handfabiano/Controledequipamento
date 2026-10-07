@@ -22,6 +22,15 @@ test('login com credenciais válidas retorna token e não vaza a senha', async (
   assert.strictEqual(r.body.usuario.senha, undefined);
 });
 
+test('os usuários do seed têm os ids e perfis que os testes assumem (helpers.tokens assina sem login)', async () => {
+  for (const [papel, esperado] of Object.entries(USUARIOS)) {
+    const r = await srv.req('POST', '/api/auth/login', { body: { email: esperado.email, senha: SENHA_SEED } });
+    assert.strictEqual(r.status, 200, papel);
+    assert.strictEqual(r.body.usuario.id, esperado.id, `${papel}: id`);
+    assert.strictEqual(r.body.usuario.tipo, esperado.tipo, `${papel}: tipo`);
+  }
+});
+
 test('login com senha errada retorna 401', async () => {
   const r = await srv.req('POST', '/api/auth/login', {
     body: { email: USUARIOS.coordenador.email, senha: 'errada' }
