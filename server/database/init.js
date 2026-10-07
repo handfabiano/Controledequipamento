@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { hashSenha } = require('../services/senhas');
-const { seedDemoData } = require('../config');
+const { seedDemoData, bootstrapToken } = require('../config');
 const { usePostgres, runAsync, getAsync, allAsync, placeholders } = require('./db');
 
 
@@ -27,6 +27,13 @@ async function initializeDatabase() {
       console.log('Inserindo dados iniciais de demonstração...');
       await insertInitialData();
       console.log('Dados iniciais inseridos com sucesso!');
+    } else if (userCount.count === 0) {
+      console.warn(
+        bootstrapToken
+          ? 'Banco sem usuários: faça o primeiro cadastro (coordenador) em POST /api/auth/register com o cabeçalho X-Bootstrap-Token.'
+          : 'AVISO: banco sem usuários e BOOTSTRAP_TOKEN não definido — qualquer pessoa pode fazer o primeiro cadastro ' +
+            '(POST /api/auth/register) até ele existir. Defina BOOTSTRAP_TOKEN para exigir um segredo.'
+      );
     }
 
     console.log('Banco de dados pronto!');

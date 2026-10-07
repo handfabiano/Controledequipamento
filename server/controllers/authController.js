@@ -1,8 +1,15 @@
+const { createHash, timingSafeEqual } = require('crypto');
 const { getAsync, runAsync } = require('../database/init');
+const { bootstrapToken } = require('../config');
 const { validarSenha, hashSenha, compararSenha } = require('../services/senhas');
 const { registrar, registrarNegacao } = require('../services/seguranca');
 const { assinar, verificar, tokenDaRequisicao } = require('../services/token');
 const { normalizarEmail } = require('../services/validacao');
+
+// Compara os dois por resumo SHA-256 (mesmo tamanho) em tempo constante
+const resumo = (texto) => createHash('sha256').update(texto).digest();
+const tokenInicialConfere = (informado) =>
+  typeof informado === 'string' && timingSafeEqual(resumo(informado), resumo(bootstrapToken));
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -88,6 +95,10 @@ const authController = {
       // Cadastro aberto apenas para o primeiro usuário (bootstrap do sistema).
       // Depois disso, somente um coordenador autenticado pode registrar novos usuários.
       const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
+
+      if (userCount.count === 0 && bootstrapToken && !tokenInicialConfere(req.get('X-Bootstrap-Token'))) {
+        return res.status(401).json({ error: 'Token de cadastro inicial inválido ou ausente' });
+      }
 
       if (userCount.count > 0) {
         const token = tokenDaRequisicao(req);

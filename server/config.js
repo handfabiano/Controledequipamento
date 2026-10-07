@@ -74,9 +74,14 @@ if (seedDemoData && isProduction) {
   );
 }
 
+// Segredo opcional para o PRIMEIRO cadastro (banco sem usuários), enviado no cabeçalho
+// X-Bootstrap-Token. Sem ele, quem chegar primeiro cria o coordenador.
+const bootstrapToken = process.env.BOOTSTRAP_TOKEN || null;
+
 module.exports = {
   isProduction,
   seedDemoData,
+  bootstrapToken,
   jwtSecret,
   corsOrigins,
   trustProxy,
