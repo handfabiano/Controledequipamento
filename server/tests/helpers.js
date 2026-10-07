@@ -22,10 +22,10 @@ const SENHA_VALIDA = 'senha-segura-9';
 
 // Usuários criados pelo seed (senha: SENHA_SEED)
 const USUARIOS = {
-  coordenador: { id: 1, email: 'coordenador@sistema.com' },
-  entrega: { id: 2, email: 'joao@sistema.com' },
-  recebimento: { id: 3, email: 'maria@sistema.com' },
-  tecnico: { id: 4, email: 'pedro@sistema.com' }
+  coordenador: { id: 1, email: 'coordenador@sistema.com', tipo: 'coordenador' },
+  entrega: { id: 2, email: 'joao@sistema.com', tipo: 'responsavel_entrega' },
+  recebimento: { id: 3, email: 'maria@sistema.com', tipo: 'responsavel_recebimento' },
+  tecnico: { id: 4, email: 'pedro@sistema.com', tipo: 'tecnico' }
 };
 
 async function iniciarServidor() {
@@ -71,13 +71,13 @@ async function iniciarServidor() {
     return { id: r.body.id, token: await login(email, SENHA_VALIDA) };
   }
 
-  // Devolve { coordenador, entrega, recebimento, tecnico } => token
+  // Devolve { coordenador, entrega, recebimento, tecnico } => token. O JWT é assinado direto: o login
+  // custa ~200 ms de bcrypt por usuário e já é exercitado em auth.test.js.
   async function tokens() {
-    const out = {};
-    for (const [papel, u] of Object.entries(USUARIOS)) {
-      out[papel] = await login(u.email);
-    }
-    return out;
+    const { assinar } = require('../services/token'); // depois de iniciarServidor: config lê o ambiente ao carregar
+    return Object.fromEntries(
+      Object.entries(USUARIOS).map(([papel, u]) => [papel, assinar({ id: u.id, email: u.email, tipo: u.tipo })])
+    );
   }
 
   async function fechar() {

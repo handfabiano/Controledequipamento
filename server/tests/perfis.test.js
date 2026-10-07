@@ -22,8 +22,8 @@ const novoEvento = (token) =>
   });
 
 test('técnico não cadastra nem edita equipamentos; coordenador e responsáveis sim', async () => {
-  const negado = await novoEquipamento(t.tecnico);
-  assert.strictEqual(negado.status, 403);
+  const negado = await srv.req('POST', '/api/equipamentos', { token: t.tecnico, body: {} });
+  assert.strictEqual(negado.status, 403, 'a recusa por perfil vem antes da validação do corpo');
 
   for (const papel of GESTORES) {
     const r = await novoEquipamento(t[papel]);
@@ -66,9 +66,4 @@ test('técnico não cria eventos; coordenador e responsáveis sim', async () => 
     const r = await novoEvento(t[papel]);
     assert.strictEqual(r.status, 201, `${papel}: ${r.text}`);
   }
-});
-
-test('a recusa por perfil vem antes da validação do corpo', async () => {
-  const r = await srv.req('POST', '/api/equipamentos', { token: t.tecnico, body: {} });
-  assert.strictEqual(r.status, 403);
 });

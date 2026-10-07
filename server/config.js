@@ -59,10 +59,8 @@ function inteiroPositivo(valor, padrao) {
 const rateLimitMax = inteiroPositivo(process.env.RATE_LIMIT_MAX, 300);
 const loginRateLimitMax = inteiroPositivo(process.env.LOGIN_RATE_LIMIT_MAX, 5);
 
-// Usuários de demonstração têm senha conhecida (123456, inclusive um coordenador), então só
-// nascem quando o ambiente é de desenvolvimento/teste ou quando SEED_DEMO_DATA=true pede
-// explicitamente. Sem NODE_ENV (o padrão do Node) o servidor NÃO semeia: falha segura.
-// SEED_DEMO_DATA=false desliga mesmo em desenvolvimento.
+// Usuários de demonstração têm senha conhecida (123456, inclusive um coordenador): só nascem em
+// desenvolvimento/teste ou com SEED_DEMO_DATA=true. Sem NODE_ENV o servidor NÃO semeia (falha segura).
 const seedDemoData =
   process.env.SEED_DEMO_DATA === 'true' ||
   (['development', 'test'].includes(process.env.NODE_ENV) && process.env.SEED_DEMO_DATA !== 'false');
@@ -74,8 +72,7 @@ if (seedDemoData && isProduction) {
   );
 }
 
-// Segredo opcional para o PRIMEIRO cadastro (banco sem usuários), enviado no cabeçalho
-// X-Bootstrap-Token. Sem ele, quem chegar primeiro cria o coordenador.
+// Segredo opcional do primeiro cadastro (cabeçalho X-Bootstrap-Token); ver DEPLOY.md
 const bootstrapToken = process.env.BOOTSTRAP_TOKEN || null;
 
 module.exports = {

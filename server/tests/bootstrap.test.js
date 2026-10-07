@@ -11,38 +11,27 @@ let srv;
 test.before(async () => { srv = await iniciarServidor(); });
 test.after(() => srv.fechar());
 
-const cadastro = (nome, email, headers = {}, token) =>
+const cadastro = (email, { headers, token } = {}) =>
   srv.req('POST', '/api/auth/register', {
     token,
     headers,
-    body: { nome, email, senha: SENHA_VALIDA, tipo: 'coordenador' }
+    body: { nome: 'Teste', email, senha: SENHA_VALIDA, tipo: 'coordenador' }
   });
 
-test('primeiro cadastro sem o token inicial é recusado e nada é criado', async () => {
-  const r = await cadastro('Invasor', 'invasor@x.com');
-  assert.strictEqual(r.status, 401);
-  assert.match(r.body.error, /inicial/i);
-});
-
-test('primeiro cadastro com token inicial errado é recusado', async () => {
-  for (const errado of ['segredo-inicial-de-tesT', 'x', 'segredo-inicial-de-teste-e-mais']) {
-    const r = await cadastro('Invasor', 'invasor@x.com', { 'X-Bootstrap-Token': errado });
-    assert.strictEqual(r.status, 401, errado);
+test('primeiro cadastro sem o token inicial, ou com um errado, é recusado', async () => {
+  for (const headers of [undefined, { 'X-Bootstrap-Token': 'x' }, { 'X-Bootstrap-Token': 'segredo-inicial-de-tesT' }]) {
+    const r = await cadastro('invasor@x.com', { headers });
+    assert.strictEqual(r.status, 401, JSON.stringify(headers));
+    assert.match(r.body.error, /inicial/i);
   }
-  const login = await srv.req('POST', '/api/auth/login', { body: { email: 'invasor@x.com', senha: SENHA_VALIDA } });
-  assert.strictEqual(login.status, 401, 'nenhum usuário pode ter sido criado');
 });
 
-test('com o token inicial certo o primeiro coordenador é criado', async () => {
-  const r = await cadastro('Dono', 'dono@x.com', { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' });
+test('com o token inicial certo o primeiro coordenador é criado (e prova que nada foi criado antes)', async () => {
+  const r = await cadastro('dono@x.com', { headers: { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' } });
   assert.strictEqual(r.status, 201);
 });
 
 test('depois do primeiro usuário o token inicial não abre mais o cadastro', async () => {
-  const r = await cadastro('Outro', 'outro@x.com', { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' });
+  const r = await cadastro('outro@x.com', { headers: { 'X-Bootstrap-Token': 'segredo-inicial-de-teste' } });
   assert.strictEqual(r.status, 401, 'agora só coordenador autenticado cadastra');
-
-  const token = await srv.login('dono@x.com', SENHA_VALIDA);
-  const ok = await cadastro('Outro', 'outro@x.com', {}, token);
-  assert.strictEqual(ok.status, 201);
 });

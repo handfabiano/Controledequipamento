@@ -14,9 +14,7 @@ const dashboardController = require('../controllers/dashboardController');
 // Validators
 const equipamentoValidator = require('../validators/equipamentoValidator');
 
-// Quem cadastra/edita equipamentos, resolve problemas e cria eventos. O técnico enxerga tudo,
-// reporta problemas e participa das transferências/eventos em que está envolvido, mas não altera
-// o cadastro nem libera equipamento com problema.
+// Cadastro de equipamentos/eventos e baixa de problemas: coordenador e responsáveis (técnico só lê e reporta)
 const gestor = checkRole('coordenador', 'responsavel_entrega', 'responsavel_recebimento');
 
 // Rotas de autenticação (públicas)

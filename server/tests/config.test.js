@@ -1,19 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { rodarNoServidor } = require('./processo-filho');
 
 // config.js lê o ambiente ao ser carregado, então cada caso roda em um processo filho
 function lerConfig(env) {
-  const saida = execFileSync(
-    process.execPath,
-    ['-e', "console.log(JSON.stringify(require('./config')))"],
-    {
-      cwd: path.join(__dirname, '..'),
-      env: { PATH: process.env.PATH, JWT_SECRET: 'x', ...env },
-      encoding: 'utf8'
-    }
-  );
+  const saida = rodarNoServidor("console.log(JSON.stringify(require('./config')))", env);
   return JSON.parse(saida.trim().split('\n').pop());
 }
 

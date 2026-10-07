@@ -1,5 +1,4 @@
-// Texto exibido quando o servidor local sobe. As credenciais de demonstração só aparecem
-// quando o seed está habilitado (config.seedDemoData); caso contrário o banner não revela nada.
+// Texto exibido quando o servidor local sobe; só lista as credenciais de demonstração se `credenciaisDemo`.
 
 function montarBanner({ porta, credenciaisDemo }) {
   const credenciais = credenciaisDemo

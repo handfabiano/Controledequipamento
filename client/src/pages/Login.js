@@ -65,7 +65,7 @@ function Login() {
           </button>
         </form>
 
-        {/* Só no servidor de desenvolvimento: em produção o seed não cria esses usuários */}
+        {/* Só no build de desenvolvimento do client (o seed do servidor segue a própria regra) */}
         {process.env.NODE_ENV === 'development' && (
           <div className="login-footer">
             <p>Credenciais de teste:</p>
