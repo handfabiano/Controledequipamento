@@ -41,6 +41,25 @@ Passo a passo:
 | Ao criar página/relatório para compartilhar | `artifact-design` / `dataviz` | Dashboards e gráficos |
 | Ao usar a API/SDK da Anthropic | `claude-api` | Modelos, parâmetros, caching |
 
+## Regra nº 2 — Documentação viva em `/docs`
+
+O estado do sistema e o plano de finalização vivem em quatro arquivos:
+[`docs/AUDITORIA.md`](docs/AUDITORIA.md) (estado atual, com data por seção),
+[`docs/ROADMAP.md`](docs/ROADMAP.md) (tarefas com ID, status, prioridade e dependências),
+[`docs/CHANGELOG.md`](docs/CHANGELOG.md) (registro datado) e
+[`docs/DECISOES.md`](docs/DECISOES.md) (decisões técnicas e motivos).
+
+1. **Antes de começar qualquer tarefa**, leia o `ROADMAP.md` e proponha o próximo item da fila
+   (o primeiro `Pendente` da fase mais baixa com dependências prontas).
+2. **Ao concluir qualquer tarefa**, na mesma entrega: atualize o status no `ROADMAP.md`, adicione
+   uma entrada datada no `CHANGELOG.md` (o quê, por quê, como foi verificado) e atualize a seção
+   afetada do `AUDITORIA.md` (com a nova data de verificação e o percentual de conclusão).
+3. **Nunca marque algo como pronto sem verificar** (rodar, testar, consultar). A evidência vai no
+   `CHANGELOG.md`.
+4. **Descobriu algo novo durante o trabalho?** Registre como nova tarefa no `ROADMAP.md` (próximo
+   ID livre), em vez de corrigir em silêncio ou ignorar.
+5. Escolha técnica relevante (biblioteca, padrão, regra de negócio) vira entrada em `DECISOES.md`.
+
 ## Comandos
 
 ```bash
