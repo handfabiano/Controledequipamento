@@ -12,17 +12,21 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-14 (commit `90cbe41`, branch `main`)_
+_Última verificação: 2026-10-14 (após R-001)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **54%** | Inventário da seção 2: (7 Pronto + 0,5 × 12 Parcial) / 24 itens |
-| Testes do backend | 112/112 passando | `npm test` (node:test, SQLite temporário) |
+| Conclusão funcional | **56%** | Inventário da seção 2: (7 Pronto + 0,5 × 13 Parcial) / 24 itens (atualizado após R-001) |
+| Testes do backend | 117/117 passando | `npm test` (node:test, SQLite temporário) |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
 | Vulnerabilidades (frontend) | 101 (63 altas) | `cd client && npm audit --omit=dev`, todas na cadeia do `react-scripts` |
 | Infra de produção | **Não verificada** | Sem acesso à Vercel; nenhum projeto Supabase da conta contém este sistema |
+
+**Atualização 2026-10-14 (R-001):** um banco de produção novo já nasce com 10 categorias, 4
+templates (checklist no "Evento Médio") e o "Depósito Central", e o primeiro equipamento é
+cadastrado pela tela (verificado em SQLite, em Postgres 16 e no navegador).
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -33,9 +37,9 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
 
 **Top 5 riscos**
 
-1. **Produção inutilizável em banco novo** (Crítico): categorias, depósitos e templates só
-   existem no seed de demonstração, que é desligado em produção. Cadastrar equipamento devolve
-   `Categoria não encontrada`. → R-001, R-002.
+1. ~~**Produção inutilizável em banco novo**~~ (resolvido em R-001, 2026-10-14): o catálogo
+   básico agora nasce em todo banco. Continua faltando editar depósitos e categorias pela
+   tela. → R-002.
 2. **Frontend de produção chama `http://localhost:3001/api`** se `REACT_APP_API_URL` não
    estiver definido no build, e o `DEPLOY.md` não menciona a variável (Crítico). → R-003.
 3. **Postgres nunca é testado** (Alto): CI e testes só usam SQLite; não há migrations; o
@@ -76,16 +80,16 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-14 (após R-001)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
 | F-01 | Login e sessão | Pronto | `authController.login`; testes em `server/tests/auth.test.js` |
 | F-02 | Primeiro cadastro (bootstrap) | Parcial | Só via API `POST /api/auth/register` (`authController.js:62`); sem tela |
 | F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pendente | Não existe rota `/api/usuarios` (verificado: 404); cliente não usa `auth.register` |
-| F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Pendente | Só no seed demo (`server/database/init.js:89-122`); sem rotas; `GET /api/depositos` → 404 |
+| F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); sem rotas para editar; `GET /api/depositos` → 404 |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
-| F-06 | Cadastrar equipamento | Parcial | Tela fixa `deposito_id: 1` (`Equipamentos.js:38`); exige código completo (prefixo automático só via API); quebra em banco sem categorias |
+| F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001 (verificado no navegador); tela fixa `deposito_id: 1` (`Equipamentos.js:38`); exige código completo (prefixo automático só via API) |
 | F-07 | Editar equipamento / colocar em manutenção | Parcial | API `PUT /equipamentos/:id` pronta; sem tela (`equipamentos.atualizar` não é usado) |
 | F-08 | Detalhe do equipamento (histórico, problemas) | Parcial | API `GET /equipamentos/:id` pronta; sem tela |
 | F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |
@@ -112,7 +116,7 @@ Funcionalidades "de fachada" (API pronta, sem uso na tela): F-07, F-08, F-10, F-
 
 ## 3. Banco de dados
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-14 (após R-001)_
 
 - **Tabelas (13)**: `usuarios`, `depositos`, `categorias_equipamentos`, `equipamentos`,
   `problemas_equipamentos`, `templates_eventos`, `checklist_template`, `eventos`,
@@ -131,9 +135,13 @@ _Última verificação: 2026-10-14_
   Postgres for Supabase, as tabelas ficam no schema `public` sem RLS e expostas à API REST do
   Supabase para quem tiver a chave anon — **verificar quando o banco de produção for
   identificado** (R-007).
+- **Catálogo básico** (R-001, verificado 2026-10-14): `server/database/catalogo.js` preenche
+  categorias, templates + checklist e o "Depósito Central" em todo banco, cada tabela só
+  enquanto está vazia (D-009). Dois cold starts simultâneos em banco vazio podem duplicar o
+  catálogo (sem restrição de unicidade); fica para R-008.
 - **Dados fictícios**: seed de demonstração (usuários com senha `123456`, equipamentos
-  exemplo) só com `NODE_ENV=development|test` ou `SEED_DEMO_DATA=true` (`config.js:64`). O
-  mesmo seed é a **única** origem de categorias, depósitos e templates (ver risco 1).
+  exemplo, depósitos Zona Norte/Sul) só com `NODE_ENV=development|test` ou
+  `SEED_DEMO_DATA=true` (`config.js:64`).
 - **Banco de produção**: nenhum dos dois projetos Supabase acessíveis (Conectapol, JER
   Gestão) contém as tabelas deste sistema (verificado com `list_tables`). O banco real não
   foi localizado.
@@ -188,6 +196,8 @@ Telas: Login, Dashboard, Equipamentos, Transferências, Eventos (`client/src/App
 - **Configuração**: `API_URL` padrão `http://localhost:3001/api` (`client/src/services/api.js:3`);
   confirmado no build gerado sem a variável.
 - **Testes**: nenhum teste de frontend.
+- **Dev server**: `npm run client` falha ao subir (`options.allowedHosts[0] should be a
+  non-empty string`, efeito do campo `proxy` no CRA); o build de produção funciona. → R-036.
 
 ---
 

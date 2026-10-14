@@ -58,3 +58,15 @@ dos commits (marcadas como "retroativa").
 - **Motivo**: senhas conhecidas não podem existir em produção.
 - **Consequências**: o catálogo de categorias/templates/depósitos, que estava no mesmo seed,
   sumiu de produção — origem do item R-001.
+
+## D-009 — Catálogo básico separado do seed de demonstração
+- **Data**: 2026-10-14
+- **Decisão**: categorias, templates com checklist e o "Depósito Central" são criados em todo
+  banco por `server/database/catalogo.js`, independentemente de `SEED_DEMO_DATA`. Cada tabela só
+  é preenchida enquanto está **vazia**, com um único INSERT de várias linhas.
+- **Motivo**: sem esse catálogo o sistema não funciona em produção (R-001). Preencher só a tabela
+  vazia evita recriar a cada reinício o que o coordenador editar ou apagar depois; o INSERT único
+  não deixa a tabela pela metade se a conexão cair.
+- **Consequências**: sem restrição de unicidade, dois cold starts simultâneos em banco vazio podem
+  duplicar o catálogo; quando houver migrations (R-008), o catálogo vira uma migração de dados que
+  roda uma vez. O seed de demonstração referencia categorias e depósitos pelo nome.
