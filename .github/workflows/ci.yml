@@ -78,3 +78,12 @@ jobs:
 
       - name: Build de produção
         run: npm run build
+
+      # Sem REACT_APP_API_URL o client de produção deve chamar a API na mesma origem (/api),
+      # nunca o localhost da máquina de quem abre o site
+      - name: Build não aponta para localhost
+        # Só o .js publicado (os .map trazem comentários do código-fonte). Exige a porta: o axios
+        # traz "http://localhost" sem porta como fallback interno. O test -d evita passar sem build.
+        run: |
+          test -d build/static/js
+          ! grep -rEl --include='*.js' "(localhost|127\.0\.0\.1|0\.0\.0\.0):[0-9]+" build/static/js
