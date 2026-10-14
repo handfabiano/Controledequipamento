@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 56%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-14, após R-001.
+**Conclusão do sistema: 56%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-14, após R-003 (sem mudança: o deploy segue Bloqueado).
 
 ---
 
@@ -24,7 +24,7 @@ Sem estes itens o sistema não funciona em produção.
 |---|---|---|---|---|---|---|
 | R-001 | Dados de referência em produção: catálogo inicial (categorias, templates + checklists, um depósito padrão) separado do seed demo, idempotente | Pronto (2026-10-14) | Crítico | P | — | Servidor com `NODE_ENV=production` em banco vazio: `GET /api/equipamentos/categorias` devolve ≥1 item e `POST /api/equipamentos` cria; teste automatizado cobre; rodar duas vezes não duplica |
 | R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pendente | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
-| R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pendente | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
+| R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
 | R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pendente | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
 | R-005 | Cadastro de equipamento com depósito real (lista) e opção de código automático por prefixo | Pendente | Alto | P | R-002 | Sem `deposito_id` fixo no client; criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pendente | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
@@ -68,12 +68,13 @@ Sem estes itens o sistema não funciona em produção.
 | R-033 | Relatórios e exportação (Excel/PDF) | Pendente | Médio | G | Fase 1 | Exportar inventário e histórico de um equipamento |
 | R-034 | Limpezas: import não usado em `server/index.js`, busca com atraso (debounce), `/health` consulta o banco | Pendente | Baixo | P | — | Lint limpo; `/health` devolve 503 sem banco |
 | R-035 | Decidir PRs abertos #8 e #16 | Pendente | Baixo | P | decisão do usuário | PRs fechados ou mesclados |
-| R-036 | `npm run client` (dev server do CRA) não sobe: `options.allowedHosts[0] should be a non-empty string` por causa do campo `proxy` | Pendente | Médio | P | — | `npm run client` serve a tela em :3000 sem variáveis extras |
+| R-036 | `npm run client` (dev server do CRA) não sobe: `options.allowedHosts[0] should be a non-empty string` por causa do campo `proxy`. Corrigir sem remover o encaminhamento de `/api` para :3001 (desde R-003 o client depende dele em dev) | Pendente | Médio | P | — | `npm run client` serve a tela em :3000 sem variáveis extras e o login funciona |
+| R-037 | Barrar no build um `REACT_APP_API_URL` que aponte para localhost (o CI só vê o build sem a variável; o da Vercel usa as variáveis do painel) | Pendente | Baixo | P | — | `npm run build` com `REACT_APP_API_URL=http://localhost:3001/api` e `NODE_ENV=production` falha com mensagem clara; build local de teste continua possível |
 
 ---
 
 ## Fila atual
 
-1. **R-003** — URL da API no build (Crítico, P, sem dependências).
-2. **R-004** — gestão de usuários (Alto, M, sem dependências).
+1. **R-004** — gestão de usuários (Alto, M, sem dependências).
+2. **R-006** — testes contra Postgres no CI (Alto, M, sem dependências).
 3. **R-007** — aguardando acesso (Vercel e banco de produção).

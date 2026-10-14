@@ -70,3 +70,14 @@ dos commits (marcadas como "retroativa").
 - **Consequências**: sem restrição de unicidade, dois cold starts simultâneos em banco vazio podem
   duplicar o catálogo; quando houver migrations (R-008), o catálogo vira uma migração de dados que
   roda uma vez. O seed de demonstração referencia categorias e depósitos pelo nome.
+
+## D-010 — API na mesma origem por padrão no client
+- **Data**: 2026-10-14
+- **Decisão**: sem `REACT_APP_API_URL`, o client chama `/api` relativo. Na Vercel o
+  `vercel.json` encaminha `/api/*` para o servidor; em desenvolvimento, o `proxy` do CRA.
+  `REACT_APP_API_URL` fica só para uma API em outro domínio.
+- **Motivo**: o padrão antigo (`http://localhost:3001/api`) fazia o site publicado chamar a
+  máquina de quem o abria (R-003). Mesma origem também dispensa CORS no deploy padrão.
+- **Consequências**: o dev server depende do campo `proxy` (cuidado em R-036); testar o build
+  servido à parte exige gerar com `REACT_APP_API_URL` apontando para a API local; o CI falha se
+  o build publicado contiver `localhost` com porta.

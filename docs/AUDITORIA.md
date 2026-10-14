@@ -12,11 +12,11 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-14 (após R-001)_
+_Última verificação: 2026-10-14 (após R-003)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **56%** | Inventário da seção 2: (7 Pronto + 0,5 × 13 Parcial) / 24 itens (atualizado após R-001) |
+| Conclusão funcional | **56%** | Inventário da seção 2: (7 Pronto + 0,5 × 13 Parcial) / 24 itens (R-003 não muda o inventário: o deploy, F-23, segue Bloqueado) |
 | Testes do backend | 117/117 passando | `npm test` (node:test, SQLite temporário) |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
@@ -27,6 +27,9 @@ _Última verificação: 2026-10-14 (após R-001)_
 **Atualização 2026-10-14 (R-001):** um banco de produção novo já nasce com 10 categorias, 4
 templates (checklist no "Evento Médio") e o "Depósito Central", e o primeiro equipamento é
 cadastrado pela tela (verificado em SQLite, em Postgres 16 e no navegador).
+
+**Atualização 2026-10-14 (R-003):** o build de produção chama a API em `/api` na mesma origem
+e não contém mais `localhost`; o CI falha se voltar a conter.
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -40,8 +43,9 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
 1. ~~**Produção inutilizável em banco novo**~~ (resolvido em R-001, 2026-10-14): o catálogo
    básico agora nasce em todo banco. Continua faltando editar depósitos e categorias pela
    tela. → R-002.
-2. **Frontend de produção chama `http://localhost:3001/api`** se `REACT_APP_API_URL` não
-   estiver definido no build, e o `DEPLOY.md` não menciona a variável (Crítico). → R-003.
+2. ~~**Frontend de produção chama `http://localhost:3001/api`**~~ (resolvido em R-003,
+   2026-10-14): o padrão é `/api` na mesma origem e `REACT_APP_API_URL` está no `DEPLOY.md`.
+   Um valor errado definido no painel da Vercel ainda passaria sem aviso. → R-037.
 3. **Postgres nunca é testado** (Alto): CI e testes só usam SQLite; não há migrations; o
    deploy real não pôde ser verificado. → R-006, R-007, R-008.
 4. **Sem gestão de usuários** (Alto): não há tela de cadastro, listagem ou desativação;
@@ -193,9 +197,11 @@ Telas: Login, Dashboard, Equipamentos, Transferências, Eventos (`client/src/App
   só por `alert()`; não há estado de erro na tela (dashboard falha em silêncio).
 - **Estado de sessão**: usuário restaurado do `localStorage` sem revalidar (`AuthContext.js:22`);
   401 leva ao login.
-- **Configuração**: `API_URL` padrão `http://localhost:3001/api` (`client/src/services/api.js:3`);
-  confirmado no build gerado sem a variável.
+- **Configuração** (verificado 2026-10-14, R-003): `API_URL` padrão `/api` na mesma origem
+  (`client/src/services/api.js:4`); `REACT_APP_API_URL` só para API em outro domínio. Em
+  desenvolvimento, `/api` depende do campo `proxy` do `client/package.json`.
 - **Testes**: nenhum teste de frontend.
+- **Etiqueta**: `gerarEtiqueta` devolve uma URL; abri-la direto não envia o token (401). → R-013.
 - **Dev server**: `npm run client` falha ao subir (`options.allowedHosts[0] should be a
   non-empty string`, efeito do campo `proxy` no CRA); o build de produção funciona. → R-036.
 
@@ -203,14 +209,15 @@ Telas: Login, Dashboard, Equipamentos, Transferências, Eventos (`client/src/App
 
 ## 6. Infraestrutura
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-14 (após R-003)_
 
 - **Deploy**: Vercel (`vercel.json`), `NODE_ENV=production` fixo. Sem acesso ao painel: não
   foi possível verificar variáveis de ambiente, saúde, logs nem o banco. **Bloqueado.**
-- **Variáveis**: documentadas em `.env.example` e `DEPLOY.md`, exceto `REACT_APP_API_URL`.
+- **Variáveis**: documentadas em `.env.example` e `DEPLOY.md`, incluindo `REACT_APP_API_URL`
+  (opcional, lida no build do client).
 - **Containers**: não há (sem Dockerfile).
 - **CI**: `.github/workflows/ci.yml` — sintaxe, `npm test`, smoke test SQLite, build do
-  cliente. Último run no `main` verde. Não testa Postgres.
+  cliente e verificação de que o build não contém `localhost:<porta>` (R-003). Último run no `main` verde. Não testa Postgres.
 - **Dependabot**: configurado (`.github/dependabot.yml`), ignora majors. PR #16 (patches de
   cors, express-validator, jsonwebtoken, pg) aberto desde 2026-10-06.
 - **Logs**: `console.log` por requisição + log JSON de segurança (`services/seguranca.js`).

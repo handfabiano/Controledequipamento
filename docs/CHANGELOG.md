@@ -5,6 +5,38 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-14 — R-003: client de produção chama a API na mesma origem
+
+**O quê**
+- `client/src/services/api.js`: sem `REACT_APP_API_URL`, o padrão passa de
+  `http://localhost:3001/api` para `/api` (a Vercel encaminha `/api/*` ao servidor; em
+  desenvolvimento o `proxy` do CRA encaminha para :3001) (D-010).
+- CI: novo passo "Build não aponta para localhost" falha se o JavaScript publicado contiver
+  `localhost`, `127.0.0.1` ou `0.0.0.0` com porta, ou se não houver build para checar.
+- `DEPLOY.md`: `REACT_APP_API_URL` documentada (opcional, do client, lida no build), como testar o
+  build localmente com a API em outra porta e diagnóstico de "toda chamada à API falha".
+- Roadmap: R-003 Pronto; R-036 avisa que o `proxy` não pode simplesmente ser removido; novo
+  R-037 (barrar no build da Vercel um `REACT_APP_API_URL` com localhost). Conclusão segue 56%.
+
+**Por quê**
+- Sem a variável, o site publicado chamava `localhost:3001` na máquina de quem o abria: nenhuma
+  tela funcionava em produção.
+
+**Verificado**
+- Passo do CI rodado localmente: falha no build anterior (aponta `main.2835cd46.js`), passa no
+  novo e falha sem pasta de build.
+- `npm test`: 117/117. `cd client && npm run build`: OK.
+- No navegador (Chromium headless), build servido com roteamento igual ao da Vercel (`/api` →
+  servidor na :3001, o resto → build), banco novo com `NODE_ENV=production`: login, 10
+  categorias na tela, cadastro de equipamento; 8 chamadas à API, todas em `/api` da mesma
+  origem, nenhuma para fora; nenhum erro de JavaScript.
+- Revisões: simplify (passo do CI mais simples e com padrão mais amplo; sugestão de checar a
+  variável no build da Vercel virou R-037), code-review high (passo do CI só no `.js` e sem
+  passar quando falta o build; DEPLOY.md com teste local e onde definir a variável; etiqueta sem
+  token já coberta por R-013), security-review sem achados.
+
+---
+
 ## 2026-10-14 — R-001: catálogo básico em todo banco
 
 **O quê**
