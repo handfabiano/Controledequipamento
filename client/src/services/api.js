@@ -37,11 +37,21 @@ api.interceptors.response.use(
   }
 );
 
+// Mensagem de erro da API ({ error }) ou o texto padrão da tela
+export const mensagemDeErro = (error, padrao) => error.response?.data?.error || padrao;
+
 // Autenticação
 export const auth = {
   login: (email, senha) => api.post('/auth/login', { email, senha }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
+  trocarSenha: (senha_atual, nova_senha) => api.put('/auth/senha', { senha_atual, nova_senha }),
+};
+
+// Usuários (coordenador); o cadastro usa auth.register
+export const usuarios = {
+  listar: () => api.get('/usuarios'),
+  definirAtivo: (id, ativo) => api.put(`/usuarios/${id}/ativo`, { ativo }),
 };
 
 // Equipamentos
