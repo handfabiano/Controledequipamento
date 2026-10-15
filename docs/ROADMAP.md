@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 56%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-14, após R-003 (sem mudança: o deploy segue Bloqueado).
+**Conclusão do sistema: 60%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-15, após R-004 e R-023.
 
 ---
 
@@ -25,7 +25,7 @@ Sem estes itens o sistema não funciona em produção.
 | R-001 | Dados de referência em produção: catálogo inicial (categorias, templates + checklists, um depósito padrão) separado do seed demo, idempotente | Pronto (2026-10-14) | Crítico | P | — | Servidor com `NODE_ENV=production` em banco vazio: `GET /api/equipamentos/categorias` devolve ≥1 item e `POST /api/equipamentos` cria; teste automatizado cobre; rodar duas vezes não duplica |
 | R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pendente | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
 | R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
-| R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pendente | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
+| R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pronto (2026-10-15) | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
 | R-005 | Cadastro de equipamento com depósito real (lista) e opção de código automático por prefixo | Pendente | Alto | P | R-002 | Sem `deposito_id` fixo no client; criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pendente | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
@@ -50,12 +50,13 @@ Sem estes itens o sistema não funciona em produção.
 | R-020 | Transações na camada `db.js` e uso nas operações de várias etapas | Pendente | Alto | M | R-006 | Teste que força falha no meio da alocação/encerramento não deixa estado parcial, nos dois drivers |
 | R-021 | Garantir no banco uma única transferência ativa por equipamento | Pendente | Médio | P | R-008 | Duas solicitações simultâneas: uma 201, outra 400/409 (teste) |
 | R-022 | Ligar `PRAGMA foreign_keys = ON` no SQLite | Pendente | Médio | P | — | Teste: inserir com FK inexistente falha no SQLite |
-| R-023 | Token só vale para usuário ativo e com o perfil atual | Pendente | Médio | P | R-004 | Teste: desativar usuário invalida o token na próxima requisição |
+| R-023 | Token só vale para usuário ativo e com o perfil atual (feito junto com R-004: sem isso, desativar não tirava o acesso) | Pronto (2026-10-15) | Médio | P | R-004 | Teste: desativar usuário invalida o token na próxima requisição |
 | R-024 | Rate limit efetivo em serverless (store compartilhado ou limite na borda) | Pendente | Médio | M | R-007 | Limite de login respeitado entre instâncias (ou decisão registrada em DECISOES) |
 | R-025 | Fuso horário das datas de evento consistente entre SQLite e Postgres | Pendente | Médio | P | R-006 | Teste de simultaneidade com horários passa nos dois drivers |
 | R-026 | `validarChecklist` ignorar alocações devolvidas, igual à aprovação | Pendente | Baixo | P | — | Teste: após devolução, checklist e aprovação concordam |
 | R-027 | Dependências: `sqlite3` 6 (tar crítico) e sair do CRA (Vite) | Pendente | Médio | G | — | `npm audit --omit=dev` sem críticas/altas no backend; build do client sem `react-scripts` |
 | R-028 | Alocação ciente de datas (reserva por período) | Pendente | Médio | M | R-020 | Equipamento alocado em evento futuro pode ir a outro evento sem sobreposição; teste |
+| R-038 | Trocar a senha encerra as outras sessões (versão de senha no token ou data da troca) | Pendente | Baixo | P | R-008 | Teste: token emitido antes da troca recebe 401; o da sessão atual segue válido ou é reemitido |
 | R-029 | Regra de quem pode solicitar transferência (hoje qualquer autenticado) | Pendente | Baixo | P | decisão do usuário | Regra registrada em DECISOES e testada |
 
 ## Fase 3 — Qualidade e pós-lançamento
@@ -75,6 +76,6 @@ Sem estes itens o sistema não funciona em produção.
 
 ## Fila atual
 
-1. **R-004** — gestão de usuários (Alto, M, sem dependências).
-2. **R-006** — testes contra Postgres no CI (Alto, M, sem dependências).
+1. **R-006** — testes contra Postgres no CI (Alto, M, sem dependências).
+2. **R-002** — telas de depósitos e categorias (Alto, M, depende de R-001, pronto).
 3. **R-007** — aguardando acesso (Vercel e banco de produção).

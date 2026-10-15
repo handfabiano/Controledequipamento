@@ -81,3 +81,18 @@ dos commits (marcadas como "retroativa").
 - **Consequências**: o dev server depende do campo `proxy` (cuidado em R-036); testar o build
   servido à parte exige gerar com `REACT_APP_API_URL` apontando para a API local; o CI falha se
   o build publicado contiver `localhost` com porta.
+
+## D-011 — Sessão conferida no banco a cada requisição
+- **Data**: 2026-10-15
+- **Decisão**: o `authMiddleware` busca o usuário do token no banco (ativo) e usa os dados de lá
+  (inclusive o perfil) em `req.user`; o JWT só prova a identidade.
+- **Motivo**: sem isso, desativar um usuário ou mudar seu perfil só valia no próximo login (até
+  24h); um coordenador desativado podia desativar os demais com o token antigo (R-023).
+- **Consequências**: uma consulta por chave primária em cada requisição autenticada; erro de
+  banco vira 500 (falha fechada). Troca de senha ainda não derruba outras sessões (R-038).
+
+## D-012 — Erros de formulário em rotas autenticadas respondem 400, não 401
+- **Data**: 2026-10-15
+- **Decisão**: 401 significa sessão inválida (o client desloga). Um dado errado do formulário,
+  como a senha atual na troca de senha, responde 400.
+- **Motivo**: um erro de digitação não pode encerrar a sessão de quem está logado.

@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-14 (após R-003)_
+_Última verificação: 2026-10-15 (após R-004 e R-023)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **56%** | Inventário da seção 2: (7 Pronto + 0,5 × 13 Parcial) / 24 itens (R-003 não muda o inventário: o deploy, F-23, segue Bloqueado) |
-| Testes do backend | 117/117 passando | `npm test` (node:test, SQLite temporário) |
+| Conclusão funcional | **60%** | Inventário da seção 2: (8 Pronto + 0,5 × 13 Parcial) / 24 itens (F-03 Pronto após R-004) |
+| Testes do backend | 131/131 passando | `npm test` (node:test, SQLite temporário) |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -30,6 +30,11 @@ cadastrado pela tela (verificado em SQLite, em Postgres 16 e no navegador).
 
 **Atualização 2026-10-14 (R-003):** o build de produção chama a API em `/api` na mesma origem
 e não contém mais `localhost`; o CI falha se voltar a conter.
+
+**Atualização 2026-10-15 (R-004 e R-023):** o coordenador lista, cadastra, desativa e reativa
+usuários pela tela; todos trocam a própria senha. Desativar encerra as sessões abertas na hora: o
+token só vale para usuário ativo e o perfil vem do banco (verificado em SQLite, Postgres 16 e no
+navegador).
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -48,8 +53,8 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
    Um valor errado definido no painel da Vercel ainda passaria sem aviso. → R-037.
 3. **Postgres nunca é testado** (Alto): CI e testes só usam SQLite; não há migrations; o
    deploy real não pôde ser verificado. → R-006, R-007, R-008.
-4. **Sem gestão de usuários** (Alto): não há tela de cadastro, listagem ou desativação;
-   usuário desativado continua com token válido por até 24h. → R-004, R-023.
+4. ~~**Sem gestão de usuários**~~ (resolvido em R-004 e R-023, 2026-10-15). Fica: trocar a
+   senha não derruba outras sessões já abertas (até 24h). → R-038.
 5. **Sem transações** (Alto): operações de várias etapas (concluir transferência, alocar
    lote, encerrar evento) podem deixar estado parcial em falha; duas solicitações simultâneas
    podem abrir duas transferências do mesmo equipamento. → R-020, R-021.
@@ -84,13 +89,13 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-14 (após R-001)_
+_Última verificação: 2026-10-15 (após R-004)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
 | F-01 | Login e sessão | Pronto | `authController.login`; testes em `server/tests/auth.test.js` |
 | F-02 | Primeiro cadastro (bootstrap) | Parcial | Só via API `POST /api/auth/register` (`authController.js:62`); sem tela |
-| F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pendente | Não existe rota `/api/usuarios` (verificado: 404); cliente não usa `auth.register` |
+| F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pronto | `GET /api/usuarios`, `PUT /api/usuarios/:id/ativo`, `PUT /api/auth/senha`; telas `Usuarios.js` e `MinhaConta.js`; testes em `usuarios.test.js` e `limite-senha.test.js` (R-004) |
 | F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); sem rotas para editar; `GET /api/depositos` → 404 |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
 | F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001 (verificado no navegador); tela fixa `deposito_id: 1` (`Equipamentos.js:38`); exige código completo (prefixo automático só via API) |
@@ -154,13 +159,16 @@ _Última verificação: 2026-10-14 (após R-001)_
 
 ## 4. Backend / API
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-15 (após R-004)_
 
-25 rotas em `server/routes/index.js`, todas sob `/api`, mais `GET /health`.
+28 rotas em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
+confere a cada requisição que o usuário do token existe e está ativo, e usa o perfil do banco
+(R-023).
 
 | Grupo | Rotas | Autorização | Validação |
 |---|---|---|---|
-| Auth | login, register, me | login público com rate limit; register aberto só no banco vazio (com `BOOTSTRAP_TOKEN` opcional) | manual |
+| Auth | login, register, me, senha | login público com rate limit; register aberto só no banco vazio (com `BOOTSTRAP_TOKEN` opcional); senha: o próprio usuário, com limite de tentativas por usuário | manual |
+| Usuários | 2 (listar, ativar/desativar) | coordenador; não altera a própria conta | manual (`inteiro`) |
 | Equipamentos | 10 | escrita: coordenador e responsáveis (`gestor`); reportar: qualquer autenticado | express-validator (`validators/equipamentoValidator.js`) |
 | Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento | manual (`inteiro`, `informado`) |
 | Eventos | 7 | criar: gestor; alocar: equipe do evento; status: coordenador (cancelar: criador também) | manual |
@@ -185,12 +193,13 @@ _Última verificação: 2026-10-14_
 
 ## 5. Frontend
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-15 (após R-004)_
 
-Telas: Login, Dashboard, Equipamentos, Transferências, Eventos (`client/src/App.js`).
+Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Usuários (só coordenador) e
+Minha conta (troca de senha) (`client/src/App.js`).
 
-- **Faltam telas**: usuários, depósitos/categorias/templates, detalhe de equipamento,
-  detalhe de evento, transferência rápida e entre eventos, perfil/troca de senha.
+- **Faltam telas**: depósitos/categorias/templates, detalhe de equipamento,
+  detalhe de evento, transferência rápida e entre eventos.
 - **UX quebrada**: transferência por ID numérico digitado; depósito fixo 1 no cadastro;
   erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
   genérica, mas a API exige 10+ caracteres); busca dispara requisição a cada tecla; feedback
@@ -230,7 +239,7 @@ _Última verificação: 2026-10-14 (após R-003)_
 
 ## 7. Segurança
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-15 (após R-004 e R-023)_
 
 **Pontos fortes (verificados no código e testes):** JWT com algoritmo fixo e segredo
 obrigatório em produção; bcrypt com comparação em tempo constante e hash fictício contra
@@ -242,7 +251,8 @@ cabeçalhos de segurança; log de acessos negados; seed demo desligado em produ�
 
 | Achado | Severidade | Evidência |
 |---|---|---|
-| Token continua válido após desativar usuário ou mudar perfil (até 24h) | Médio | `middleware/auth.js:11` não consulta o banco |
+| ~~Token continua válido após desativar usuário ou mudar perfil~~ | Resolvido (R-023) | `middleware/auth.js` confere o usuário no banco a cada requisição |
+| Trocar a senha não derruba outras sessões abertas (até 24h) | Baixo | o JWT não tem versão de senha → R-038 |
 | Token em `localStorage` (exposto a XSS, se houver) | Baixo | `AuthContext.js:34` |
 | Rate limit em memória ineficaz em serverless | Médio | `middleware/rateLimiter.js` |
 | CORS aberto se `CORS_ORIGIN` não definido | Baixo | `config.js:28` (há aviso no log) |
@@ -255,9 +265,9 @@ cabeçalhos de segurança; log de acessos negados; seed demo desligado em produ�
 
 ## 8. Qualidade
 
-_Última verificação: 2026-10-14_
+_Última verificação: 2026-10-15_
 
-- **Testes**: 112 testes de integração do backend, todos passando; cobrem auth, perfis,
+- **Testes**: 131 testes de integração do backend, todos passando; cobrem auth, perfis,
   equipamentos, eventos, transferências, dashboard, config, cabeçalhos, segurança, TLS.
   Sem testes de frontend, sem testes contra Postgres.
 - **Dívida técnica**: sem transações; schema sem migrations; CRA descontinuado; `alert()`

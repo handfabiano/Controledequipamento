@@ -5,6 +5,49 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-15 — R-004 e R-023: gestão de usuários e sessão só para usuário ativo
+
+**O quê**
+- API: `GET /api/usuarios` e `PUT /api/usuarios/:id/ativo` (coordenador; não altera a própria
+  conta) e `PUT /api/auth/senha` (o próprio usuário, exige a senha atual e aplica a política de
+  senhas). Senha atual errada responde 400, porque a sessão é válida e o client desloga em 401.
+- Limite de tentativas na troca de senha por usuário, contando só senha atual errada, com
+  contador separado do login (`limiteDeFalhas` em `rateLimiter.js`).
+- R-023: o `authMiddleware` (e o cadastro feito por coordenador) confere no banco que o usuário
+  do token existe e está ativo, e usa o perfil do banco. Desativar encerra as sessões abertas.
+- Login, `me` e as rotas de usuários devolvem o mesmo formato (`usuarioPublico`, `ativo`
+  booleano, nunca a senha); perfis aceitos em `TIPOS_USUARIO` (`services/usuarios.js`).
+- Telas: **Usuários** (coordenador: lista, cadastra com perfil, desativa/reativa, com aviso na
+  tela em vez de `alert()`) e **Minha conta** (troca de senha), ligada pelo nome no topo.
+- Testes novos: `usuarios.test.js` (12) e `limite-senha.test.js` (2). Roadmap: R-004 e R-023
+  Pronto; novo R-038. Conclusão: 56% → 60% (F-03 Pronto).
+
+**Por quê**
+- Não havia como cadastrar, listar ou desativar usuários nem trocar senha sem mexer no banco.
+- A revisão mostrou que, sem R-023, desativar não tirava o acesso: um coordenador desativado
+  ainda podia, com o token antigo, desativar os outros coordenadores e trancar todos fora.
+
+**Verificado**
+- Testes novos falharam antes da implementação (9 de 9, depois 3 de 3 para R-023) e passam;
+  `npm test`: 131/131. `cd client && npm run build`: OK, sem avisos de lint.
+- No navegador (Chromium headless, build de produção, banco novo): coordenador cadastra um
+  técnico (senha fraca recusada com a mensagem do servidor), desativa (login do técnico → 401),
+  reativa (→ 200); a própria linha não tem botão; técnico não vê o menu e `/usuarios` volta ao
+  início; troca de senha com senha atual errada mostra o erro sem deslogar; depois da troca a
+  senha antiga dá 401 e a nova 200. Nenhum erro de JavaScript.
+- Postgres 16 local: as mesmas rotas, `ativo` booleano, token do usuário desativado → 401 no
+  dashboard.
+- Revisões: simplify (constantes e helpers compartilhados, `inteiro`, fábrica de limitadores,
+  limite por usuário), code-review high (levou a fazer R-023 junto, limite só para senha atual
+  errada, formato único de usuário, sem SQL montado com colunas vindas de parâmetro),
+  security-review sem achados.
+
+**Riscos que ficam**
+- Trocar a senha não derruba outras sessões já abertas (até 24h) → R-038.
+- Uma consulta ao banco a mais por requisição autenticada (busca por chave primária).
+
+---
+
 ## 2026-10-14 — R-003: client de produção chama a API na mesma origem
 
 **O quê**
