@@ -3,8 +3,10 @@ const { getAsync, runAsync } = require('../database/init');
 const { bootstrapToken } = require('../config');
 const { validarSenha, hashSenha, compararSenha } = require('../services/senhas');
 const { registrar, registrarNegacao } = require('../services/seguranca');
-const { assinar, verificar, tokenDaRequisicao } = require('../services/token');
+const { assinar, tokenDaRequisicao, ehErroDeToken } = require('../services/token');
+const { usuarioDoToken } = require('../middleware/auth');
 const { normalizarEmail } = require('../services/validacao');
+const { TIPOS_USUARIO, COLUNAS_PUBLICAS, usuarioPublico } = require('../services/usuarios');
 
 // Comparação em tempo constante: os dois lados viram SHA-256 (mesmo tamanho) antes de comparar
 const sha256 = (texto) => createHash('sha256').update(texto).digest();
@@ -49,10 +51,7 @@ const authController = {
 
       registrar('login_sucesso', { usuario_id: usuario.id, ip: req.ip });
 
-      // Não retornar a senha
-      delete usuario.senha;
-
-      res.json({ token, usuario });
+      res.json({ token, usuario: usuarioPublico(usuario) });
     } catch (error) {
       console.error('Erro no login:', error);
       res.status(500).json({ error: 'Erro ao fazer login' });
@@ -79,8 +78,7 @@ const authController = {
         return res.status(400).json({ error: 'Email inválido' });
       }
 
-      const tiposValidos = ['coordenador', 'responsavel_entrega', 'responsavel_recebimento', 'tecnico'];
-      if (!tiposValidos.includes(tipo)) {
+      if (!TIPOS_USUARIO.includes(tipo)) {
         return res.status(400).json({ error: 'Tipo de usuário inválido' });
       }
 
@@ -103,15 +101,19 @@ const authController = {
           return res.status(401).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
         }
 
-        let decoded;
+        let autor;
         try {
-          decoded = verificar(token);
+          autor = await usuarioDoToken(token);
         } catch (err) {
+          if (!ehErroDeToken(err)) throw err;
           return res.status(401).json({ error: 'Token inválido' });
         }
+        if (!autor) {
+          return res.status(401).json({ error: 'Usuário inativo ou inexistente' });
+        }
 
-        req.user = decoded; // para o registro de segurança saber quem tentou
-        if (decoded.tipo !== 'coordenador') {
+        req.user = autor; // para o registro de segurança saber quem tentou
+        if (autor.tipo !== 'coordenador') {
           return res.status(403).json({ error: 'Apenas coordenadores podem registrar novos usuários' });
         }
       } else if (bootstrapToken && !tokenInicialConfere(req.get('X-Bootstrap-Token'))) {
@@ -151,18 +153,50 @@ const authController = {
     }
   },
 
-  async me(req, res) {
+  async trocarSenha(req, res) {
     try {
-      const usuario = await getAsync(
-        'SELECT id, nome, email, tipo, criado_em FROM usuarios WHERE id = ?',
-        [req.user.id]
-      );
+      const { senha_atual: senhaAtual, nova_senha: novaSenha } = req.body;
 
-      if (!usuario) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
+      if (!senhaAtual || !novaSenha) {
+        return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+      }
+      if (typeof senhaAtual !== 'string' || typeof novaSenha !== 'string') {
+        return res.status(400).json({ error: 'As senhas devem ser texto' });
       }
 
-      res.json(usuario);
+      if (novaSenha === senhaAtual) {
+        return res.status(400).json({ error: 'A nova senha deve ser diferente da atual' });
+      }
+
+      // O authMiddleware já garantiu que o usuário existe e está ativo
+      const usuario = await getAsync('SELECT id, email, senha FROM usuarios WHERE id = ?', [req.user.id]);
+
+      // A sessão é válida; o que está errado é um dado do formulário (401 significa sessão inválida)
+      if (!(await compararSenha(senhaAtual, usuario.senha))) {
+        registrarNegacao(res, 'troca_senha_falha', { usuario_id: usuario.id, ip: req.ip });
+        res.locals.senhaAtualIncorreta = true; // só isto conta para o senhaLimiter
+        return res.status(400).json({ error: 'Senha atual incorreta' });
+      }
+
+      const erroSenha = validarSenha(novaSenha, usuario.email);
+      if (erroSenha) {
+        return res.status(400).json({ error: erroSenha });
+      }
+
+      await runAsync('UPDATE usuarios SET senha = ? WHERE id = ?', [await hashSenha(novaSenha), usuario.id]);
+      registrar('senha_alterada', { usuario_id: usuario.id, ip: req.ip });
+
+      res.json({ message: 'Senha alterada com sucesso' });
+    } catch (error) {
+      console.error('Erro ao trocar senha:', error);
+      res.status(500).json({ error: 'Erro ao trocar senha' });
+    }
+  },
+
+  async me(req, res) {
+    try {
+      const usuario = await getAsync(`SELECT ${COLUNAS_PUBLICAS} FROM usuarios WHERE id = ?`, [req.user.id]);
+      res.json(usuarioPublico(usuario));
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
       res.status(500).json({ error: 'Erro ao buscar dados do usuário' });

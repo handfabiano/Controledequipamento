@@ -1,18 +1,37 @@
-const { verificar, tokenDaRequisicao } = require('../services/token');
+const { verificar, tokenDaRequisicao, ehErroDeToken } = require('../services/token');
+const { buscarUsuarioAtivo } = require('../services/usuarios');
 
-const authMiddleware = (req, res, next) => {
-  try {
-    const token = tokenDaRequisicao(req);
+// Usuário do token conferido no banco: desativado ou removido, a sessão acaba na hora (não só no
+// próximo login), e o perfil vale pelo banco, não pelo que foi gravado no token. Lança se o token
+// for inválido; devolve undefined se o usuário não estiver mais ativo.
+async function usuarioDoToken(token) {
+  const { id } = verificar(token);
+  return buscarUsuarioAtivo(id);
+}
 
-    if (!token) {
-      return res.status(401).json({ error: 'Token não fornecido' });
-    }
+const authMiddleware = async (req, res, next) => {
+  const token = tokenDaRequisicao(req);
 
-    req.user = verificar(token);
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Token inválido' });
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
   }
+
+  let usuario;
+  try {
+    usuario = await usuarioDoToken(token);
+  } catch (error) {
+    if (ehErroDeToken(error)) {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+    return next(error);
+  }
+
+  if (!usuario) {
+    return res.status(401).json({ error: 'Usuário inativo ou inexistente' });
+  }
+
+  req.user = usuario;
+  next();
 };
 
 const checkRole = (...roles) => {
@@ -24,4 +43,4 @@ const checkRole = (...roles) => {
   };
 };
 
-module.exports = { authMiddleware, checkRole };
+module.exports = { authMiddleware, checkRole, usuarioDoToken };

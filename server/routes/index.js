@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware, checkRole } = require('../middleware/auth');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, senhaLimiter } = require('../middleware/rateLimiter');
 
 // Controllers
 const authController = require('../controllers/authController');
@@ -10,6 +10,7 @@ const transferenciasController = require('../controllers/transferenciasControlle
 const eventosController = require('../controllers/eventosController');
 const notificacoesController = require('../controllers/notificacoesController');
 const dashboardController = require('../controllers/dashboardController');
+const usuariosController = require('../controllers/usuariosController');
 
 // Validators
 const equipamentoValidator = require('../validators/equipamentoValidator');
@@ -21,6 +22,11 @@ const gestor = checkRole('coordenador', 'responsavel_entrega', 'responsavel_rece
 router.post('/auth/login', authLimiter, authController.login);
 router.post('/auth/register', authController.register);
 router.get('/auth/me', authMiddleware, authController.me);
+router.put('/auth/senha', authMiddleware, senhaLimiter, authController.trocarSenha);
+
+// Gestão de usuários (cadastro continua em /auth/register)
+router.get('/usuarios', authMiddleware, checkRole('coordenador'), usuariosController.listar);
+router.put('/usuarios/:id/ativo', authMiddleware, checkRole('coordenador'), usuariosController.definirAtivo);
 
 // Rotas de equipamentos
 router.get('/equipamentos', authMiddleware, equipamentoValidator.listarEquipamentos, equipamentosController.listar);
