@@ -388,28 +388,35 @@ test('concluir com destino fora de depósito preserva o depósito de origem', as
 });
 
 test('falha ao aplicar a conclusão desfaz a etapa e permite repetir (sem travar a transferência)', async () => {
-  const sqlite3 = require('sqlite3');
+  const { usePostgres, runAsync } = require('../database/db');
   const eqId = await novoEquipamento({ deposito_id: 1 });
   const { body } = await solicitar(eqId, { destino_id: 3 });
   await aprovar(body.id, 'coordenador', t.coordenador);
   await aprovar(body.id, 'entrega', t.entrega);
 
   // Um trigger faz o registro do histórico falhar, simulando uma queda no meio da conclusão
-  const db = new sqlite3.Database(process.env.SQLITE_PATH);
-  const exec = (sql) => new Promise((res, rej) => db.exec(sql, (e) => (e ? rej(e) : res())));
-  await exec(`CREATE TRIGGER falha_historico BEFORE INSERT ON historico_movimentacoes
-              WHEN NEW.tipo_movimentacao = 'transferencia'
-              BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;`);
+  if (usePostgres) {
+    await runAsync(`CREATE FUNCTION falha_simulada() RETURNS trigger AS $$
+                    BEGIN RAISE EXCEPTION 'falha simulada'; END; $$ LANGUAGE plpgsql`);
+    await runAsync(`CREATE TRIGGER falha_historico BEFORE INSERT ON historico_movimentacoes
+                    FOR EACH ROW WHEN (NEW.tipo_movimentacao = 'transferencia') EXECUTE FUNCTION falha_simulada()`);
+  } else {
+    await runAsync(`CREATE TRIGGER falha_historico BEFORE INSERT ON historico_movimentacoes
+                    WHEN NEW.tipo_movimentacao = 'transferencia'
+                    BEGIN SELECT RAISE(ABORT, 'falha simulada'); END`);
+  }
 
-  const falhou = await aprovar(body.id, 'recebimento', t.recebimento);
-  assert.strictEqual(falhou.status, 500);
+  // Sempre remove o trigger: se ficasse, toda conclusão seguinte neste arquivo falharia
+  try {
+    const falhou = await aprovar(body.id, 'recebimento', t.recebimento);
+    assert.strictEqual(falhou.status, 500);
 
-  const meio = await transf(body.id);
-  assert.strictEqual(meio.status, 'em_transito', 'voltou ao estado anterior');
-  assert.strictEqual(meio.aprovacao_recebimento, 0, 'etapa pode ser aprovada de novo');
-
-  await exec('DROP TRIGGER falha_historico');
-  db.close();
+    const meio = await transf(body.id);
+    assert.strictEqual(meio.status, 'em_transito', 'voltou ao estado anterior');
+    assert.strictEqual(meio.aprovacao_recebimento, 0, 'etapa pode ser aprovada de novo');
+  } finally {
+    await runAsync(usePostgres ? 'DROP TRIGGER falha_historico ON historico_movimentacoes' : 'DROP TRIGGER falha_historico');
+  }
 
   const de_novo = await aprovar(body.id, 'recebimento', t.recebimento);
   assert.strictEqual(de_novo.status, 200, de_novo.text);
