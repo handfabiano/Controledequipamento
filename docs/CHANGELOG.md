@@ -5,7 +5,7 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
-## 2026-10-16 — R-006 (em andamento): suíte do backend também em Postgres
+## 2026-10-16 — R-006: suíte do backend também em Postgres
 
 **O quê**
 - `server/tests/helpers.js`: com `TEST_DATABASE_URL` (Postgres com permissão de criar bancos),
@@ -26,8 +26,10 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 **Verificado**
 - Postgres 16 local: 131/131 (antes da correção do trigger, 130/131), várias rodadas sem
   sobrar banco `teste_*`. SQLite: 131/131.
-- Workflow validado como YAML. **Falta**: o CI só roda em PR ou no `main`, então o passo novo
-  ainda não rodou no GitHub; R-006 fica Em andamento até isso.
+- GitHub Actions no PR #22 (rascunho, aberto com o ok do Fabiano): job do backend verde (run
+  38955169214), com o passo do Postgres 16; o log do Postgres mostra a `falha simulada` do teste
+  do trigger, prova de que a suíte rodou nele. Frontend verde. O health check do service passou a
+  usar `-U postgres` (sem isso o log enchia de `role "root" does not exist`).
 - Revisões: simplify (passo no job existente em vez de job duplicado; TLS do helper igual ao do
   app), code-review high (limpeza garantida do banco e do trigger, `.env` local isolado, FORCE no
   DROP), security-review sem achados.
