@@ -65,6 +65,7 @@ O estado do sistema e o plano de finalização vivem em quatro arquivos:
 ```bash
 npm ci && (cd client && npm ci)   # instalar tudo
 npm test                           # testes do backend (node:test, SQLite temporário)
+TEST_DATABASE_URL=postgresql://... npm test   # os mesmos testes em Postgres (um banco por arquivo)
 npm run dev                        # backend com nodemon (porta 3001)
 npm run client                     # frontend (porta 3000)
 cd client && npm run build         # build de produção do frontend (CI roda isso)

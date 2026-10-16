@@ -5,6 +5,38 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-16 — R-006 (em andamento): suíte do backend também em Postgres
+
+**O quê**
+- `server/tests/helpers.js`: com `TEST_DATABASE_URL` (Postgres com permissão de criar bancos),
+  cada arquivo de teste cria um banco próprio e o apaga no fim (`DROP ... WITH (FORCE)`, também
+  quando a subida do app ou o fechamento falham). Sem a variável, segue o SQLite temporário.
+- Os testes em SQLite não podem mais ir parar num banco de verdade: antes, um `DATABASE_URL` no
+  `.env` de quem rodava `npm test` voltava pelo `dotenv` e os testes gravavam nele (reproduzido:
+  12 falhas tentando conectar no host do `.env`; agora usa SQLite).
+- `db.js`: `encerrar()` fecha as conexões; o pool do Postgres ganhou ouvinte de `error`, sem o qual
+  uma conexão ociosa derrubada pelo servidor (reinício, failover) derrubava o processo.
+- O teste que simula falha no meio da conclusão de transferência usava um trigger só de SQLite;
+  agora cria o trigger nos dois bancos e o remove mesmo se uma asserção falhar.
+- CI: o job do backend sobe um Postgres 16 e roda `npm test` nele depois do SQLite (D-013).
+
+**Por quê**
+- Produção usa Postgres e nenhum teste rodava nele (R-006); R-008 e R-020 dependem disso.
+
+**Verificado**
+- Postgres 16 local: 131/131 (antes da correção do trigger, 130/131), várias rodadas sem
+  sobrar banco `teste_*`. SQLite: 131/131.
+- Workflow validado como YAML. **Falta**: o CI só roda em PR ou no `main`, então o passo novo
+  ainda não rodou no GitHub; R-006 fica Em andamento até isso.
+- Revisões: simplify (passo no job existente em vez de job duplicado; TLS do helper igual ao do
+  app), code-review high (limpeza garantida do banco e do trigger, `.env` local isolado, FORCE no
+  DROP), security-review sem achados.
+
+**Riscos que ficam**
+- Os testes de config/seed que rodam em processo filho continuam só em SQLite.
+
+---
+
 ## 2026-10-15 — R-004 e R-023: gestão de usuários e sessão só para usuário ativo
 
 **O quê**

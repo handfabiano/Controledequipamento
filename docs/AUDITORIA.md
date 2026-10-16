@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-15 (após R-004 e R-023)_
+_Última verificação: 2026-10-16 (R-006 em andamento)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
 | Conclusão funcional | **60%** | Inventário da seção 2: (8 Pronto + 0,5 × 13 Parcial) / 24 itens (F-03 Pronto após R-004) |
-| Testes do backend | 131/131 passando | `npm test` (node:test, SQLite temporário) |
+| Testes do backend | 131/131 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test` (local; o passo novo do CI ainda não rodou no GitHub) |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -51,8 +51,9 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
 2. ~~**Frontend de produção chama `http://localhost:3001/api`**~~ (resolvido em R-003,
    2026-10-14): o padrão é `/api` na mesma origem e `REACT_APP_API_URL` está no `DEPLOY.md`.
    Um valor errado definido no painel da Vercel ainda passaria sem aviso. → R-037.
-3. **Postgres nunca é testado** (Alto): CI e testes só usam SQLite; não há migrations; o
-   deploy real não pôde ser verificado. → R-006, R-007, R-008.
+3. **Postgres pouco verificado** (Alto): desde 2026-10-16 a suíte roda em Postgres 16 local
+   (131/131) e o CI tem o passo, mas ele só roda no GitHub com um PR ou no `main`; não há
+   migrations; o deploy real não pôde ser verificado. → R-006, R-007, R-008.
 4. ~~**Sem gestão de usuários**~~ (resolvido em R-004 e R-023, 2026-10-15). Fica: trocar a
    senha não derruba outras sessões já abertas (até 24h). → R-038.
 5. **Sem transações** (Alto): operações de várias etapas (concluir transferência, alocar
@@ -225,8 +226,10 @@ _Última verificação: 2026-10-14 (após R-003)_
 - **Variáveis**: documentadas em `.env.example` e `DEPLOY.md`, incluindo `REACT_APP_API_URL`
   (opcional, lida no build do client).
 - **Containers**: não há (sem Dockerfile).
-- **CI**: `.github/workflows/ci.yml` — sintaxe, `npm test`, smoke test SQLite, build do
-  cliente e verificação de que o build não contém `localhost:<porta>` (R-003). Último run no `main` verde. Não testa Postgres.
+- **CI** (verificado 2026-10-16): `.github/workflows/ci.yml` — sintaxe, `npm test` em SQLite e em
+  Postgres 16 (service container; um banco por arquivo de teste, R-006), smoke test SQLite, build
+  do cliente e verificação de que o build não contém `localhost:<porta>` (R-003). O CI só roda em
+  PR e no `main`: os passos novos ainda não rodaram no GitHub. Último run no `main` verde.
 - **Dependabot**: configurado (`.github/dependabot.yml`), ignora majors. PR #16 (patches de
   cors, express-validator, jsonwebtoken, pg) aberto desde 2026-10-06.
 - **Logs**: `console.log` por requisição + log JSON de segurança (`services/seguranca.js`).
@@ -265,11 +268,12 @@ cabeçalhos de segurança; log de acessos negados; seed demo desligado em produ�
 
 ## 8. Qualidade
 
-_Última verificação: 2026-10-15_
+_Última verificação: 2026-10-16_
 
 - **Testes**: 131 testes de integração do backend, todos passando; cobrem auth, perfis,
   equipamentos, eventos, transferências, dashboard, config, cabeçalhos, segurança, TLS.
-  Sem testes de frontend, sem testes contra Postgres.
+  Os que sobem o app rodam também em Postgres com `TEST_DATABASE_URL` (131/131 local); os de
+  config/seed em processo filho seguem só em SQLite. Sem testes de frontend.
 - **Dívida técnica**: sem transações; schema sem migrations; CRA descontinuado; `alert()`
   como feedback; controllers longos (`transferenciasController.js` 758 linhas).
 - **Código morto**: funções do `api.js` sem uso na tela (ver seção 2); `authLimiter`

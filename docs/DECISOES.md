@@ -96,3 +96,13 @@ dos commits (marcadas como "retroativa").
 - **Decisão**: 401 significa sessão inválida (o client desloga). Um dado errado do formulário,
   como a senha atual na troca de senha, responde 400.
 - **Motivo**: um erro de digitação não pode encerrar a sessão de quem está logado.
+
+## D-013 — Testes em Postgres com um banco por arquivo
+- **Data**: 2026-10-16
+- **Decisão**: com `TEST_DATABASE_URL`, cada arquivo de teste (processo próprio no `node --test`)
+  cria um banco `teste_<pid>_<hora>` e o apaga no fim. No CI, o mesmo job do backend roda a suíte
+  em SQLite e depois em Postgres 16 (service container).
+- **Motivo**: isolamento igual ao do SQLite temporário sem mudar os testes, que rodam em paralelo
+  e contam com ids do seed; schema por arquivo exigiria mexer no `search_path` de toda conexão.
+- **Consequências**: a URL precisa de permissão para criar bancos; os testes em processo filho
+  (config/seed) seguem em SQLite.

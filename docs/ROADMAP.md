@@ -27,7 +27,7 @@ Sem estes itens o sistema não funciona em produção.
 | R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
 | R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pronto (2026-10-15) | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
 | R-005 | Cadastro de equipamento com depósito real (lista) e opção de código automático por prefixo | Pendente | Alto | P | R-002 | Sem `deposito_id` fixo no client; criar com prefixo pela tela gera `XXX0001` |
-| R-006 | Suíte de testes também contra Postgres no CI (service container) | Pendente | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
+| R-006 | Suíte de testes também contra Postgres no CI (service container) | Em andamento (2026-10-16: código pronto e 131/131 em Postgres local; falta o passo rodar verde no GitHub, que só executa em PR ou no `main`) | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
 | R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pendente | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
 
@@ -76,6 +76,6 @@ Sem estes itens o sistema não funciona em produção.
 
 ## Fila atual
 
-1. **R-006** — testes contra Postgres no CI (Alto, M, sem dependências).
+1. **R-006** — falta só ver o passo do Postgres verde no GitHub (precisa de um PR).
 2. **R-002** — telas de depósitos e categorias (Alto, M, depende de R-001, pronto).
 3. **R-007** — aguardando acesso (Vercel e banco de produção).
