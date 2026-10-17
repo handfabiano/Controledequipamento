@@ -1,4 +1,5 @@
--- Schema Postgres (equivalente ao schema.sql do SQLite)
+-- Schema inicial (Postgres), equivalente ao 001_schema_inicial.sql do SQLite. Usa IF NOT EXISTS
+-- porque bancos criados antes das migrações já têm estas tabelas: nelas esta versão só é registrada
 
 -- Tabela de Usuários
 CREATE TABLE IF NOT EXISTS usuarios (

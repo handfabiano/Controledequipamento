@@ -8,10 +8,16 @@ const { opcoesSsl } = require('./ssl');
 
 const usePostgres = Boolean(process.env.DATABASE_URL);
 
+// Advisory lock que serializa migrações, catálogo e seed entre instâncias: chave (valor arbitrário
+// fixo) e quanto uma instância espera a outra antes de desistir
+const CHAVE_EXCLUSIVIDADE = 72616001;
+const ESPERA_MAXIMA = '20s';
+
 let runAsync;
 let getAsync;
 let allAsync;
 let encerrar;
+let comExclusividade;
 
 if (usePostgres) {
   const { Pool, types } = require('pg');
@@ -49,30 +55,53 @@ if (usePostgres) {
     return sql.replace(/\?/g, () => `$${++index}`);
   };
 
-  runAsync = async (sql, params = []) => {
-    let text = toPgPlaceholders(sql);
-    const isInsert = /^\s*insert\b/i.test(text);
+  // Consultas num alvo (o pool ou um cliente dedicado). Sem parâmetros o SQL vai como está: um '?'
+  // dentro de texto ou comentário de migração não é placeholder
+  const consultar = (alvo, sql, params) => alvo.query(params.length > 0 ? toPgPlaceholders(sql) : sql, params);
 
-    // Emular o lastID do SQLite: todas as tabelas do sistema têm coluna id
-    if (isInsert && !/\breturning\b/i.test(text)) {
-      text += ' RETURNING id';
+  const conexaoPg = (alvo) => ({
+    run: async (sql, params = []) => {
+      const isInsert = /^\s*insert\b/i.test(sql);
+
+      // Emular o lastID do SQLite: todas as tabelas do sistema têm coluna id
+      const result = await consultar(alvo, isInsert && !/\breturning\b/i.test(sql) ? `${sql} RETURNING id` : sql, params);
+      return {
+        lastID: isInsert ? result.rows[0]?.id : undefined,
+        changes: result.rowCount
+      };
+    },
+    get: async (sql, params = []) => (await consultar(alvo, sql, params)).rows[0],
+    all: async (sql, params = []) => (await consultar(alvo, sql, params)).rows
+  });
+
+  ({ run: runAsync, get: getAsync, all: allAsync } = conexaoPg(pool));
+
+  // Cold starts simultâneos na Vercel: uma transação com advisory lock de transação faz as instâncias
+  // esperarem a vez. O lock de transação (e não o de sessão) funciona também atrás do pooler em modo
+  // transação (Supabase, porta 6543) e é liberado no COMMIT/ROLLBACK ou se a conexão cair
+  comExclusividade = async (fn) => {
+    const cliente = await pool.connect();
+    let erroConexao;
+    try {
+      await cliente.query('BEGIN');
+      try {
+        // Uma instância travada segurando o lock não congela as outras para sempre: a espera falha e
+        // a próxima requisição tenta de novo
+        await cliente.query(`SET LOCAL lock_timeout = '${ESPERA_MAXIMA}'`);
+        await cliente.query('SELECT pg_advisory_xact_lock($1)', [CHAVE_EXCLUSIVIDADE]);
+        const resultado = await fn(conexaoPg(cliente));
+        await cliente.query('COMMIT');
+        return resultado;
+      } catch (erro) {
+        // ROLLBACK falhou (conexão caída): descartar a conexão em vez de devolvê-la ao pool
+        await cliente.query('ROLLBACK').catch((erroRollback) => {
+          erroConexao = erroRollback;
+        });
+        throw erro;
+      }
+    } finally {
+      cliente.release(erroConexao);
     }
-
-    const result = await pool.query(text, params);
-    return {
-      lastID: isInsert ? result.rows[0]?.id : undefined,
-      changes: result.rowCount
-    };
-  };
-
-  getAsync = async (sql, params = []) => {
-    const result = await pool.query(toPgPlaceholders(sql), params);
-    return result.rows[0];
-  };
-
-  allAsync = async (sql, params = []) => {
-    const result = await pool.query(toPgPlaceholders(sql), params);
-    return result.rows;
   };
 } else {
   const sqlite3 = require('sqlite3').verbose();
@@ -109,9 +138,29 @@ if (usePostgres) {
       });
     });
   };
+
+  // Um processo só, com uma conexão só: uma fila em memória serializa as chamadas (um BEGIN dentro
+  // de outra transação da mesma conexão falharia); IMMEDIATE trava o arquivo contra outro processo
+  const conexaoSqlite = { run: runAsync, get: getAsync, all: allAsync };
+  let fila = Promise.resolve();
+  comExclusividade = (fn) => {
+    const vez = fila.then(async () => {
+      await runAsync('BEGIN IMMEDIATE');
+      try {
+        const resultado = await fn(conexaoSqlite);
+        await runAsync('COMMIT');
+        return resultado;
+      } catch (erro) {
+        await runAsync('ROLLBACK').catch(() => {});
+        throw erro;
+      }
+    });
+    fila = vez.catch(() => {});
+    return vez;
+  };
 }
 
 // Lista de placeholders para cláusulas IN: placeholders(['a', 'b']) => '?, ?'
 const placeholders = (valores) => valores.map(() => '?').join(', ');
 
-module.exports = { usePostgres, runAsync, getAsync, allAsync, placeholders, encerrar };
+module.exports = { usePostgres, runAsync, getAsync, allAsync, placeholders, encerrar, comExclusividade };

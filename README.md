@@ -141,7 +141,7 @@ Esporte/
 │   │   ├── transferenciasController.js
 │   │   └── eventosController.js
 │   ├── database/              # Banco de dados
-│   │   ├── schema.sql         # Schema do banco
+│   │   ├── migracoes/         # Schema em migrações (.sql SQLite, .pg.sql Postgres)
 │   │   └── init.js            # Inicialização e dados de exemplo
 │   ├── middleware/            # Middlewares
 │   │   └── auth.js            # Autenticação

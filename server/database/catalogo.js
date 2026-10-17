@@ -1,9 +1,10 @@
 // Catálogo básico que todo banco precisa para o sistema funcionar: sem categoria não se cadastra
 // equipamento, e a tela de cadastro envia o depósito 1. Diferente do seed de demonstração (init.js),
 // vale também em produção. Cada tabela só é preenchida enquanto está vazia: o que for editado
-// depois não volta a cada reinício (ver docs/DECISOES.md, D-009).
+// depois não volta a cada reinício (ver docs/DECISOES.md, D-009). Roda com exclusividade e numa
+// transação (init.js): dois cold starts em banco vazio não duplicam nem deixam o catálogo pela metade.
 
-const { getAsync, allAsync, runAsync } = require('./db');
+const { allAsync } = require('./db');
 
 const CATEGORIAS = [
   ['Microfone com Fio', 'som', 'Microfones profissionais com cabo'],
@@ -36,43 +37,44 @@ const TEMPLATES = [
 const DEPOSITO_PADRAO = 'Depósito Central';
 
 // Uma instrução INSERT com várias linhas: atômica (não deixa a tabela pela metade) e uma viagem só
-const inserirLinhas = (tabela, colunas, linhas) =>
-  runAsync(
+const inserirLinhas = (conexao, tabela, colunas, linhas) =>
+  conexao.run(
     `INSERT INTO ${tabela} (${colunas.join(', ')}) VALUES ${linhas.map(() => `(${colunas.map(() => '?').join(', ')})`).join(', ')}`,
     linhas.flat()
   );
 
 // nome => id de uma tabela com colunas id e nome
-const idPorNome = async (tabela) =>
-  new Map((await allAsync(`SELECT id, nome FROM ${tabela}`)).map((linha) => [linha.nome, linha.id]));
+const idPorNome = async (tabela, conexao = { all: allAsync }) =>
+  new Map((await conexao.all(`SELECT id, nome FROM ${tabela}`)).map((linha) => [linha.nome, linha.id]));
 
-async function garantirCatalogo() {
+// conexao: a de comExclusividade (db.js), { run, all }
+async function garantirCatalogo(conexao) {
   // Uma consulta só: roda a cada cold start e, com o banco já populado, é o único custo
-  const existe = await getAsync(`SELECT
+  const [existe] = await conexao.all(`SELECT
     EXISTS (SELECT 1 FROM categorias_equipamentos) AS categorias,
     EXISTS (SELECT 1 FROM templates_eventos) AS templates,
     EXISTS (SELECT 1 FROM depositos) AS depositos`);
 
   if (!existe.categorias) {
-    await inserirLinhas('categorias_equipamentos', ['nome', 'tipo', 'descricao'], CATEGORIAS);
+    await inserirLinhas(conexao, 'categorias_equipamentos', ['nome', 'tipo', 'descricao'], CATEGORIAS);
   }
 
   if (!existe.templates) {
-    await inserirLinhas('templates_eventos', ['nome', 'tamanho', 'descricao'], TEMPLATES.map(([nome, tamanho, descricao]) => [nome, tamanho, descricao]));
+    await inserirLinhas(conexao, 'templates_eventos', ['nome', 'tamanho', 'descricao'], TEMPLATES.map(([nome, tamanho, descricao]) => [nome, tamanho, descricao]));
 
-    const [templates, categorias] = await Promise.all([idPorNome('templates_eventos'), idPorNome('categorias_equipamentos')]);
+    const [templates, categorias] = await Promise.all([idPorNome('templates_eventos', conexao), idPorNome('categorias_equipamentos', conexao)]);
     // Categoria renomeada ou removida: o item fica de fora (não há a que ligá-lo)
     const itens = TEMPLATES.flatMap(([template, , , checklist]) =>
       checklist
         .filter(([categoria]) => categorias.has(categoria))
         .map(([categoria, quantidade, obrigatorio]) => [templates.get(template), categorias.get(categoria), quantidade, obrigatorio]));
     if (itens.length > 0) {
-      await inserirLinhas('checklist_template', ['template_id', 'categoria_id', 'quantidade_minima', 'obrigatorio'], itens);
+      await inserirLinhas(conexao, 'checklist_template', ['template_id', 'categoria_id', 'quantidade_minima', 'obrigatorio'], itens);
     }
   }
 
   if (!existe.depositos) {
-    await runAsync('INSERT INTO depositos (nome) VALUES (?)', [DEPOSITO_PADRAO]);
+    await conexao.run('INSERT INTO depositos (nome) VALUES (?)', [DEPOSITO_PADRAO]);
   }
 }
 
