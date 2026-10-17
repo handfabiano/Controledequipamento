@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard';
 import Equipamentos from './pages/Equipamentos';
 import Transferencias from './pages/Transferencias';
 import Eventos from './pages/Eventos';
+import Usuarios from './pages/Usuarios';
+import MinhaConta from './pages/MinhaConta';
 import Layout from './components/Layout';
 
 const PrivateRoute = ({ children }) => {
@@ -16,6 +18,12 @@ const PrivateRoute = ({ children }) => {
   }
 
   return isAuthenticated ? children : <Navigate to="/login" />;
+};
+
+// Só esconde a tela; quem barra é o servidor
+const SoCoordenador = ({ children }) => {
+  const { isCoordenador } = useAuth();
+  return isCoordenador() ? children : <Navigate to="/" />;
 };
 
 function AppRoutes() {
@@ -35,6 +43,8 @@ function AppRoutes() {
           <Route path="equipamentos" element={<Equipamentos />} />
           <Route path="transferencias" element={<Transferencias />} />
           <Route path="eventos" element={<Eventos />} />
+          <Route path="usuarios" element={<SoCoordenador><Usuarios /></SoCoordenador>} />
+          <Route path="minha-conta" element={<MinhaConta />} />
         </Route>
       </Routes>
     </Router>

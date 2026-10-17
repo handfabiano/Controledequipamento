@@ -13,4 +13,7 @@ const verificar = (token) => jwt.verify(token, jwtSecret, { algorithms: [ALGORIT
 // Só o esquema "Bearer": um token enviado como "Basic ..." ou outro esquema não vale.
 const tokenDaRequisicao = (req) => /^Bearer (\S+)$/i.exec(req.headers.authorization ?? '')?.[1];
 
-module.exports = { assinar, verificar, tokenDaRequisicao };
+// Erro de token (assinatura, formato, expiração), não de infraestrutura
+const ehErroDeToken = (erro) => erro instanceof jwt.JsonWebTokenError;
+
+module.exports = { assinar, verificar, tokenDaRequisicao, ehErroDeToken };

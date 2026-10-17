@@ -13,14 +13,23 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Limite mais restrito para login (apenas tentativas falhas contam)
-const authLimiter = rateLimit({
+// Limite para quem confere senha: só as tentativas falhas contam
+const limiteDeFalhas = (mensagem, opcoes = {}) => rateLimit({
   windowMs: 15 * 60 * 1000,
   max: loginRateLimitMax,
-  message: {
-    error: 'Muitas tentativas de login. Aguarde 15 minutos.'
-  },
+  message: { error: mensagem },
   skipSuccessfulRequests: true,
+  ...opcoes,
 });
 
-module.exports = { apiLimiter, authLimiter };
+const authLimiter = limiteDeFalhas('Muitas tentativas de login. Aguarde 15 minutos.');
+
+// Troca de senha: contador próprio (um erro aqui não bloqueia o login) e por usuário, porque o risco
+// é um token roubado testar a senha atual. Só a senha atual errada conta: nova senha fraca não é
+// tentativa de adivinhar. Roda depois do authMiddleware, então req.user existe.
+const senhaLimiter = limiteDeFalhas('Muitas tentativas de troca de senha. Aguarde 15 minutos.', {
+  keyGenerator: (req) => `usuario:${req.user.id}`,
+  requestWasSuccessful: (req, res) => !res.locals.senhaAtualIncorreta,
+});
+
+module.exports = { apiLimiter, authLimiter, senhaLimiter };

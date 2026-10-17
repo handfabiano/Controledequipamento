@@ -11,6 +11,7 @@ const usePostgres = Boolean(process.env.DATABASE_URL);
 let runAsync;
 let getAsync;
 let allAsync;
+let encerrar;
 
 if (usePostgres) {
   const { Pool, types } = require('pg');
@@ -34,6 +35,14 @@ if (usePostgres) {
     // Ambiente serverless: manter o pool pequeno
     max: parseInt(process.env.PG_POOL_MAX || '3', 10)
   });
+
+  // Conexão ociosa derrubada pelo servidor (reinício, failover, limite do provedor): sem este
+  // ouvinte o 'error' do pool derruba o processo; o pool descarta a conexão e abre outra
+  pool.on('error', (err) => {
+    console.error('Conexão ociosa com o Postgres perdida:', err.message);
+  });
+
+  encerrar = () => pool.end();
 
   const toPgPlaceholders = (sql) => {
     let index = 0;
@@ -72,6 +81,8 @@ if (usePostgres) {
   const dbPath = process.env.SQLITE_PATH || path.join(__dirname, 'equipamentos.db');
   const db = new sqlite3.Database(dbPath);
 
+  encerrar = () => new Promise((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+
   runAsync = (sql, params = []) => {
     return new Promise((resolve, reject) => {
       db.run(sql, params, function (err) {
@@ -103,4 +114,4 @@ if (usePostgres) {
 // Lista de placeholders para cláusulas IN: placeholders(['a', 'b']) => '?, ?'
 const placeholders = (valores) => valores.map(() => '?').join(', ');
 
-module.exports = { usePostgres, runAsync, getAsync, allAsync, placeholders };
+module.exports = { usePostgres, runAsync, getAsync, allAsync, placeholders, encerrar };

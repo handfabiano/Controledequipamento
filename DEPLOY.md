@@ -40,6 +40,12 @@ RATE_LIMIT_MAX=300     # Requisições por IP a cada 15 min na API (padrão: 300
 LOGIN_RATE_LIMIT_MAX=5 # Tentativas de login FALHAS por IP a cada 15 min (padrão: 5)
 ```
 
+> **`REACT_APP_API_URL`** (do client, não do servidor): deixe sem definir no deploy padrão. O client chama `/api` na mesma
+> origem, que o `vercel.json` encaminha para `server/index.js`. A variável entra no JavaScript
+> no momento do build (painel da Vercel ou `client/.env.production`, nunca o `.env` da raiz): se
+> mudar, faça um novo deploy. Se apontar para outro domínio, configure
+> `CORS_ORIGIN` nesse servidor com o endereço do site.
+
 > **Importante:** sem `TRUST_PROXY` atrás de um proxy (Vercel, nginx...), o rate limit enxerga o
 > IP do proxy e **todos os usuários dividem o mesmo contador** — 5 logins errados de qualquer
 > pessoa bloqueariam o login de todos. Na Vercel o padrão já é `1`.
@@ -107,6 +113,12 @@ cd client && npm run build
 npm start
 ```
 
+O build usa `/api` na mesma origem. Para testá-lo servido à parte (ex.: `npx serve -s build` na
+porta 3000 com a API na 3001), gere o build com
+`REACT_APP_API_URL=http://localhost:3001/api npm run build` e não publique esse build. Em
+desenvolvimento (`npm run client`), o campo `proxy` do `client/package.json` encaminha `/api` para
+a porta 3001: não o remova.
+
 ## Troubleshooting
 
 ### Build falha com "command not found"
@@ -122,6 +134,10 @@ npm start
 
 ### Dados somem entre acessos
 - Você está sem `DATABASE_URL` (rodando em SQLite efêmero) — configure um Postgres externo
+
+### Telas carregam, mas toda chamada à API falha
+- Veja no console do browser para onde as requisições vão. Se for `localhost` ou outro domínio,
+  há um `REACT_APP_API_URL` errado no build: remova a variável (padrão `/api`) e refaça o deploy
 
 ### Frontend não carrega
 - Verifique se o build do React foi bem sucedido

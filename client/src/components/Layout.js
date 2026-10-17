@@ -2,10 +2,11 @@ import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
+import { rotuloPerfil } from '../perfis';
 import './Layout.css';
 
 function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, isCoordenador } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -35,11 +36,16 @@ function Layout() {
           <Link to="/eventos" className={isActive('/eventos') ? 'active' : ''}>
             Eventos
           </Link>
+          {isCoordenador() && (
+            <Link to="/usuarios" className={isActive('/usuarios') ? 'active' : ''}>
+              Usuários
+            </Link>
+          )}
         </div>
         <div className="navbar-user">
           <NotificationBell />
-          <span>{user?.nome}</span>
-          <span className="badge badge-info">{user?.tipo?.replace('_', ' ')}</span>
+          <Link to="/minha-conta" title="Minha conta e troca de senha">{user?.nome}</Link>
+          <span className="badge badge-info">{rotuloPerfil(user?.tipo)}</span>
           <button onClick={handleLogout} className="btn btn-secondary btn-sm">
             Sair
           </button>

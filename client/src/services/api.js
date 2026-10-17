@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// Sem REACT_APP_API_URL, a API fica na mesma origem: na Vercel /api vai para a função do servidor
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -36,11 +37,21 @@ api.interceptors.response.use(
   }
 );
 
+// Mensagem de erro da API ({ error }) ou o texto padrão da tela
+export const mensagemDeErro = (error, padrao) => error.response?.data?.error || padrao;
+
 // Autenticação
 export const auth = {
   login: (email, senha) => api.post('/auth/login', { email, senha }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
+  trocarSenha: (senha_atual, nova_senha) => api.put('/auth/senha', { senha_atual, nova_senha }),
+};
+
+// Usuários (coordenador); o cadastro usa auth.register
+export const usuarios = {
+  listar: () => api.get('/usuarios'),
+  definirAtivo: (id, ativo) => api.put(`/usuarios/${id}/ativo`, { ativo }),
 };
 
 // Equipamentos

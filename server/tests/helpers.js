@@ -1,6 +1,8 @@
 // Utilitários para testes de integração: sobem o app Express em porta efêmera,
-// com um SQLite temporário e dados de demonstração. Cada arquivo *.test.js roda
+// com um banco temporário e dados de demonstração. Cada arquivo *.test.js roda
 // em um processo próprio (node --test), então cada um tem seu banco isolado.
+// Banco: SQLite num diretório temporário; com TEST_DATABASE_URL (Postgres com permissão de criar
+// bancos), um banco novo por arquivo, apagado no fim.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -12,7 +14,17 @@ process.env.SQLITE_PATH = path.join(tmpDir, 'test.db');
 process.env.JWT_SECRET = 'segredo-de-teste';
 process.env.RATE_LIMIT_MAX = '100000';
 process.env.LOGIN_RATE_LIMIT_MAX = '100000';
-delete process.env.DATABASE_URL;
+const urlPostgres = process.env.TEST_DATABASE_URL;
+const bancoPostgres = urlPostgres && `teste_${process.pid}_${Date.now()}`;
+if (bancoPostgres) {
+  const url = new URL(urlPostgres);
+  url.pathname = `/${bancoPostgres}`;
+  process.env.DATABASE_URL = url.toString();
+} else {
+  // Vazio, e não apagado: o dotenv do index.js só preenche variáveis ausentes, e um DATABASE_URL do
+  // .env de quem roda os testes os levaria para o banco de verdade
+  process.env.DATABASE_URL = '';
+}
 delete process.env.TRUST_PROXY;
 delete process.env.VERCEL;
 
@@ -28,8 +40,37 @@ const USUARIOS = {
   tecnico: { id: 4, email: 'pedro@sistema.com', tipo: 'tecnico' }
 };
 
+// Comando administrativo (criar/apagar o banco do arquivo) pela URL de TEST_DATABASE_URL
+async function comandoPostgres(sql) {
+  const { Client } = require('pg');
+  const { opcoesSsl } = require('../database/ssl');
+  const cliente = new Client({ connectionString: urlPostgres, ssl: opcoesSsl(urlPostgres) });
+  await cliente.connect();
+  try {
+    await cliente.query(sql);
+  } finally {
+    await cliente.end();
+  }
+}
+
+// Banco Postgres do arquivo (FORCE: derruba conexões que ainda estejam fechando) e diretório temporário
+async function apagarRecursos() {
+  try {
+    if (bancoPostgres) await comandoPostgres(`DROP DATABASE IF EXISTS ${bancoPostgres} WITH (FORCE)`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 async function iniciarServidor() {
-  const app = require('../index');
+  if (bancoPostgres) await comandoPostgres(`CREATE DATABASE ${bancoPostgres}`);
+  let app;
+  try {
+    app = require('../index');
+  } catch (erro) {
+    await apagarRecursos();
+    throw erro;
+  }
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
@@ -81,8 +122,12 @@ async function iniciarServidor() {
   }
 
   async function fechar() {
-    await new Promise((resolve) => server.close(resolve));
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    try {
+      await new Promise((resolve) => server.close(resolve));
+      await require('../database/db').encerrar();
+    } finally {
+      await apagarRecursos();
+    }
   }
 
   return { base, req, login, criarUsuario, tokens, fechar };
