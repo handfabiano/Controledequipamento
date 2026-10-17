@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-16 (após R-006)_
+_Última verificação: 2026-10-17 (após R-002)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **60%** | Inventário da seção 2: (8 Pronto + 0,5 × 13 Parcial) / 24 itens (F-03 Pronto após R-004) |
-| Testes do backend | 131/131 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local e no CI (PR #22, run 38955169214) |
+| Conclusão funcional | **60%** | Inventário da seção 2: (8 Pronto + 0,5 × 13 Parcial) / 24 itens (F-03 Pronto após R-004; R-002 avançou F-04 e F-06, que seguem parciais) |
+| Testes do backend | 142/142 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-17); no CI desde o PR #22 |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -36,6 +36,10 @@ usuários pela tela; todos trocam a própria senha. Desativar encerra as sessõe
 token só vale para usuário ativo e o perfil vem do banco (verificado em SQLite, Postgres 16 e no
 navegador).
 
+**Atualização 2026-10-17 (R-002):** o coordenador cria e edita depósitos e categorias na tela
+Cadastros, e o cadastro de equipamento escolhe o depósito numa lista em vez de usar sempre o 1
+(verificado em SQLite, Postgres 16 e no navegador).
+
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
 coberto por testes. O que impede o lançamento é o entorno: um banco de produção novo nasce
@@ -46,8 +50,8 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
 **Top 5 riscos**
 
 1. ~~**Produção inutilizável em banco novo**~~ (resolvido em R-001, 2026-10-14): o catálogo
-   básico agora nasce em todo banco. Continua faltando editar depósitos e categorias pela
-   tela. → R-002.
+   básico agora nasce em todo banco, e desde R-002 (2026-10-17) depósitos e categorias são
+   editados pela tela. Falta editar templates e checklists. → R-039.
 2. ~~**Frontend de produção chama `http://localhost:3001/api`**~~ (resolvido em R-003,
    2026-10-14): o padrão é `/api` na mesma origem e `REACT_APP_API_URL` está no `DEPLOY.md`.
    Um valor errado definido no painel da Vercel ainda passaria sem aviso. → R-037.
@@ -90,16 +94,16 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-15 (após R-004)_
+_Última verificação: 2026-10-17 (após R-002)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
 | F-01 | Login e sessão | Pronto | `authController.login`; testes em `server/tests/auth.test.js` |
 | F-02 | Primeiro cadastro (bootstrap) | Parcial | Só via API `POST /api/auth/register` (`authController.js:62`); sem tela |
 | F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pronto | `GET /api/usuarios`, `PUT /api/usuarios/:id/ativo`, `PUT /api/auth/senha`; telas `Usuarios.js` e `MinhaConta.js`; testes em `usuarios.test.js` e `limite-senha.test.js` (R-004) |
-| F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); sem rotas para editar; `GET /api/depositos` → 404 |
+| F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); depósitos e categorias: API e tela Cadastros (`cadastrosController.js`, `Cadastros.js`, testes em `cadastros.test.js`, R-002); templates e checklists sem edição (R-039) |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
-| F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001 (verificado no navegador); tela fixa `deposito_id: 1` (`Equipamentos.js:38`); exige código completo (prefixo automático só via API) |
+| F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001; depósito escolhido numa lista desde R-002 (verificado no navegador); exige código completo (prefixo automático só via API, R-005) |
 | F-07 | Editar equipamento / colocar em manutenção | Parcial | API `PUT /equipamentos/:id` pronta; sem tela (`equipamentos.atualizar` não é usado) |
 | F-08 | Detalhe do equipamento (histórico, problemas) | Parcial | API `GET /equipamentos/:id` pronta; sem tela |
 | F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |
@@ -160,9 +164,9 @@ _Última verificação: 2026-10-14 (após R-001)_
 
 ## 4. Backend / API
 
-_Última verificação: 2026-10-15 (após R-004)_
+_Última verificação: 2026-10-17 (após R-002)_
 
-28 rotas em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
+40 rotas (contadas em 2026-10-17; a contagem anterior, 28, estava errada) em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
 confere a cada requisição que o usuário do token existe e está ativo, e usa o perfil do banco
 (R-023).
 
@@ -170,7 +174,8 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
 |---|---|---|---|
 | Auth | login, register, me, senha | login público com rate limit; register aberto só no banco vazio (com `BOOTSTRAP_TOKEN` opcional); senha: o próprio usuário, com limite de tentativas por usuário | manual |
 | Usuários | 2 (listar, ativar/desativar) | coordenador; não altera a própria conta | manual (`inteiro`) |
-| Equipamentos | 10 | escrita: coordenador e responsáveis (`gestor`); reportar: qualquer autenticado | express-validator (`validators/equipamentoValidator.js`) |
+| Depósitos e categorias | 6 (depósitos: listar, criar, editar; categorias: listar, criar, editar) | listar: autenticado; criar e editar: coordenador | manual (`services/validacao.js`, D-014) |
+| Equipamentos | 9 (sem a lista de categorias) | escrita: coordenador e responsáveis (`gestor`); reportar: qualquer autenticado | express-validator (`validators/equipamentoValidator.js`) |
 | Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento | manual (`inteiro`, `informado`) |
 | Eventos | 7 | criar: gestor; alocar: equipe do evento; status: coordenador (cancelar: criador também) | manual |
 | Notificações | 4 | só as do próprio usuário | — |
@@ -188,20 +193,24 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
   - Qualquer usuário (inclusive técnico) pode solicitar transferência de qualquer equipamento.
   - Templates ordenados alfabeticamente por `tamanho` (`eventosController.js:512`).
   - `authLimiter` importado e não usado em `server/index.js:7`.
+  - Ids acima do `INTEGER` do Postgres dão 500 nas rotas que usam `inteiro` (reproduzido em
+    `PUT /api/usuarios/99999999999/ativo`, 2026-10-17). → R-041.
+  - Nome único de depósito e categoria é checado só na API, não no banco. → R-040.
 - **Edge Functions**: não há.
 
 ---
 
 ## 5. Frontend
 
-_Última verificação: 2026-10-15 (após R-004)_
+_Última verificação: 2026-10-17 (após R-002)_
 
-Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Usuários (só coordenador) e
-Minha conta (troca de senha) (`client/src/App.js`).
+Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Cadastros (depósitos e
+categorias, só coordenador), Usuários (só coordenador) e Minha conta (troca de senha)
+(`client/src/App.js`).
 
-- **Faltam telas**: depósitos/categorias/templates, detalhe de equipamento,
+- **Faltam telas**: templates e checklists, detalhe de equipamento,
   detalhe de evento, transferência rápida e entre eventos.
-- **UX quebrada**: transferência por ID numérico digitado; depósito fixo 1 no cadastro;
+- **UX quebrada**: transferência por ID numérico digitado;
   erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
   genérica, mas a API exige 10+ caracteres); busca dispara requisição a cada tecla; feedback
   só por `alert()`; não há estado de erro na tela (dashboard falha em silêncio).

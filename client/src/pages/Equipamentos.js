@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { equipamentos } from '../services/api';
+import { equipamentos, depositos } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import QRScanner from '../components/QRScanner';
@@ -9,6 +9,7 @@ function Equipamentos() {
   const { isGestor } = useAuth();
   const [equipamentosList, setEquipamentosList] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [listaDepositos, setListaDepositos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showProblemaModal, setShowProblemaModal] = useState(false);
@@ -35,7 +36,7 @@ function Equipamentos() {
     marca: '',
     modelo: '',
     numero_serie: '',
-    deposito_id: 1,
+    deposito_id: '',
     condicao: 'bom',
     observacoes: '',
   });
@@ -54,10 +55,7 @@ function Equipamentos() {
         limit: pagination.limit
       };
 
-      const [equipResponse, categoriasResponse] = await Promise.all([
-        equipamentos.listar(params),
-        equipamentos.listarCategorias(),
-      ]);
+      const equipResponse = await equipamentos.listar(params);
 
       // Handle new pagination response format
       if (equipResponse.data.data) {
@@ -68,7 +66,6 @@ function Equipamentos() {
         setEquipamentosList(equipResponse.data);
       }
 
-      setCategorias(categoriasResponse.data);
     } catch (error) {
       console.error('Erro ao carregar equipamentos:', error);
       alert('Erro ao carregar equipamentos');
@@ -80,6 +77,19 @@ function Equipamentos() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Categorias e depósitos não mudam com filtro nem página: carregam uma vez
+  useEffect(() => {
+    Promise.all([equipamentos.listarCategorias(), depositos.listar()])
+      .then(([categoriasResponse, depositosResponse]) => {
+        setCategorias(categoriasResponse.data);
+        setListaDepositos(depositosResponse.data);
+      })
+      .catch((error) => {
+        console.error('Erro ao carregar categorias e depósitos:', error);
+        alert('Erro ao carregar categorias e depósitos');
+      });
+  }, []);
 
   const handleScan = useCallback(async (decodedText) => {
     setShowScanner(false);
@@ -147,7 +157,7 @@ function Equipamentos() {
       marca: '',
       modelo: '',
       numero_serie: '',
-      deposito_id: 1,
+      deposito_id: '',
       condicao: 'bom',
       observacoes: '',
     });
@@ -377,6 +387,22 @@ function Equipamentos() {
                   {categorias.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.nome} ({cat.tipo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Depósito *</label>
+                <select
+                  value={formData.deposito_id}
+                  onChange={(e) => setFormData({ ...formData, deposito_id: e.target.value })}
+                  required
+                >
+                  <option value="">Selecione...</option>
+                  {listaDepositos.map((dep) => (
+                    <option key={dep.id} value={dep.id}>
+                      {dep.nome}
                     </option>
                   ))}
                 </select>

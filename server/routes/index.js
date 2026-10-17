@@ -11,12 +11,14 @@ const eventosController = require('../controllers/eventosController');
 const notificacoesController = require('../controllers/notificacoesController');
 const dashboardController = require('../controllers/dashboardController');
 const usuariosController = require('../controllers/usuariosController');
+const cadastrosController = require('../controllers/cadastrosController');
 
 // Validators
 const equipamentoValidator = require('../validators/equipamentoValidator');
 
 // Cadastro de equipamentos/eventos e baixa de problemas: coordenador e responsáveis (técnico só lê e reporta)
 const gestor = checkRole('coordenador', 'responsavel_entrega', 'responsavel_recebimento');
+const coordenador = checkRole('coordenador');
 
 // Rotas de autenticação (públicas)
 router.post('/auth/login', authLimiter, authController.login);
@@ -25,12 +27,19 @@ router.get('/auth/me', authMiddleware, authController.me);
 router.put('/auth/senha', authMiddleware, senhaLimiter, authController.trocarSenha);
 
 // Gestão de usuários (cadastro continua em /auth/register)
-router.get('/usuarios', authMiddleware, checkRole('coordenador'), usuariosController.listar);
-router.put('/usuarios/:id/ativo', authMiddleware, checkRole('coordenador'), usuariosController.definirAtivo);
+router.get('/usuarios', authMiddleware, coordenador, usuariosController.listar);
+router.put('/usuarios/:id/ativo', authMiddleware, coordenador, usuariosController.definirAtivo);
+
+// Depósitos e categorias: todos consultam, só o coordenador cadastra e edita
+router.get('/depositos', authMiddleware, cadastrosController.listarDepositos);
+router.post('/depositos', authMiddleware, coordenador, cadastrosController.criarDeposito);
+router.put('/depositos/:id', authMiddleware, coordenador, cadastrosController.atualizarDeposito);
+router.get('/equipamentos/categorias', authMiddleware, cadastrosController.listarCategorias);
+router.post('/equipamentos/categorias', authMiddleware, coordenador, cadastrosController.criarCategoria);
+router.put('/equipamentos/categorias/:id', authMiddleware, coordenador, cadastrosController.atualizarCategoria);
 
 // Rotas de equipamentos
 router.get('/equipamentos', authMiddleware, equipamentoValidator.listarEquipamentos, equipamentosController.listar);
-router.get('/equipamentos/categorias', authMiddleware, equipamentosController.listarCategorias);
 router.get('/equipamentos/tombamento/:tombamento', authMiddleware, equipamentoValidator.buscarPorTombamento, equipamentosController.buscarPorTombamento);
 router.get('/equipamentos/:id', authMiddleware, equipamentoValidator.buscarPorId, equipamentosController.buscarPorId);
 router.get('/equipamentos/:id/qrcode', authMiddleware, equipamentoValidator.buscarPorId, equipamentosController.gerarQRCode);

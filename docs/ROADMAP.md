@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 60%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-15, após R-004 e R-023.
+**Conclusão do sistema: 60%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-17, após R-002 (sem mudança: F-04 e F-06 seguem parciais por templates e prefixo).
 
 ---
 
@@ -23,10 +23,10 @@ Sem estes itens o sistema não funciona em produção.
 | ID | Tarefa | Status | Prioridade | Esforço | Depende de | Critério de pronto |
 |---|---|---|---|---|---|---|
 | R-001 | Dados de referência em produção: catálogo inicial (categorias, templates + checklists, um depósito padrão) separado do seed demo, idempotente | Pronto (2026-10-14) | Crítico | P | — | Servidor com `NODE_ENV=production` em banco vazio: `GET /api/equipamentos/categorias` devolve ≥1 item e `POST /api/equipamentos` cria; teste automatizado cobre; rodar duas vezes não duplica |
-| R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pendente | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
+| R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pronto (2026-10-17) | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
 | R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
 | R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pronto (2026-10-15) | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
-| R-005 | Cadastro de equipamento com depósito real (lista) e opção de código automático por prefixo | Pendente | Alto | P | R-002 | Sem `deposito_id` fixo no client; criar com prefixo pela tela gera `XXX0001` |
+| R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pendente | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pronto (2026-10-16) | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
 | R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pendente | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
@@ -57,6 +57,9 @@ Sem estes itens o sistema não funciona em produção.
 | R-027 | Dependências: `sqlite3` 6 (tar crítico) e sair do CRA (Vite) | Pendente | Médio | G | — | `npm audit --omit=dev` sem críticas/altas no backend; build do client sem `react-scripts` |
 | R-028 | Alocação ciente de datas (reserva por período) | Pendente | Médio | M | R-020 | Equipamento alocado em evento futuro pode ir a outro evento sem sobreposição; teste |
 | R-038 | Trocar a senha encerra as outras sessões (versão de senha no token ou data da troca) | Pendente | Baixo | P | R-008 | Teste: token emitido antes da troca recebe 401; o da sessão atual segue válido ou é reemitido |
+| R-039 | API e tela de coordenador para templates de evento e seus checklists (criar, editar) | Pendente | Médio | M | R-002 | Coordenador cria um template com checklist pela tela e o usa ao criar evento; não-coordenador recebe 403; testes de API |
+| R-040 | Nome único de depósito e de categoria garantido no banco (índice em `LOWER(nome)`), não só na checagem da API | Pendente | Baixo | P | R-008 | Dois cadastros simultâneos com o mesmo nome: um 201, outro 400 (teste) |
+| R-041 | Ids acima do `INTEGER` do Postgres dão 500 nas rotas antigas (ex.: `PUT /api/usuarios/99999999999/ativo`); usar `idValido` de `services/validacao.js` | Pendente | Baixo | P | — | Mesmas rotas respondem 400/404 em SQLite e Postgres (teste) |
 | R-029 | Regra de quem pode solicitar transferência (hoje qualquer autenticado) | Pendente | Baixo | P | decisão do usuário | Regra registrada em DECISOES e testada |
 
 ## Fase 3 — Qualidade e pós-lançamento
@@ -76,6 +79,6 @@ Sem estes itens o sistema não funciona em produção.
 
 ## Fila atual
 
-1. **R-002** — telas de depósitos e categorias (Alto, M, depende de R-001, pronto).
+1. **R-005** — código automático por prefixo no cadastro de equipamento (Alto, P, depende de R-002, pronto).
 2. **R-008** — migrations versionadas (Alto, M, depende de R-006, pronto).
 3. **R-007** — aguardando acesso (Vercel e banco de produção).

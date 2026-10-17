@@ -5,6 +5,47 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-17 — R-002: depósitos e categorias pela tela
+
+**O quê**
+- API nova (`server/controllers/cadastrosController.js`): `GET /api/depositos` para qualquer
+  usuário logado (com o nome do responsável); `POST` e `PUT /api/depositos/:id`,
+  `POST /api/equipamentos/categorias` e `PUT /api/equipamentos/categorias/:id` só para
+  coordenador. A edição recebe o registro inteiro, como a tela envia.
+- Regras: nome obrigatório (até 100 caracteres), sem repetir nome (sem diferenciar maiúsculas);
+  tipo de categoria só entre os valores do `CHECK` do banco; responsável precisa ser usuário
+  ativo, mas um depósito pode manter o responsável atual depois que ele for desativado; ids fora
+  do `INTEGER` do Postgres dão 400.
+- `GET /api/equipamentos/categorias` passou para o mesmo controller e perdeu o cache de 24h em
+  memória (D-014).
+- Tela **Cadastros** (só coordenador, link no menu): lista, cria e edita depósitos e categorias.
+- Cadastro de equipamento: o depósito deixou de ser fixo em 1 e vem de uma lista obrigatória;
+  categorias e depósitos carregam uma vez ao abrir a tela, não a cada filtro ou página.
+- `services/validacao.js` ganhou `idValido`, `textoOuNulo`, `textoObrigatorio`, `ErroDeEntrada`
+  e `tratarErros` (D-014).
+- Novas tarefas: R-039 (templates e checklists pela tela), R-040 (nome único garantido no banco),
+  R-041 (ids grandes dão 500 nas rotas antigas em Postgres: reproduzido com
+  `PUT /api/usuarios/99999999999/ativo`). R-005 ficou só com o código automático por prefixo.
+
+**Por quê**
+- Sem isso o coordenador não conseguia criar depósitos nem categorias, e todo equipamento
+  cadastrado pela tela ia para o depósito 1 (R-002).
+
+**Verificado**
+- `npm test`: 142/142 em SQLite e em Postgres 16 local (`server/tests/cadastros.test.js`, 11
+  testes: listar, criar, editar, validações, 403 para os outros perfis, nome repetido,
+  responsável inativo, ids grandes, categoria nova visível na lista do cadastro).
+- `cd client && npm run build`: ok (só os avisos de source map do `html5-qrcode`).
+- Navegador (Playwright, build de produção atrás de um proxy igual ao da Vercel, banco novo em
+  `NODE_ENV=production`): coordenador criou o "Galpão Leste" com responsável, editou o nome,
+  criou a categoria "Projetor"; ambos apareceram no formulário de equipamento e o equipamento
+  `PRJ0001` foi criado no depósito novo. Sem erros de JavaScript.
+- Revisões: simplify (categorias num só controller, PUT completo, carga única na tela de
+  equipamentos), code-review high (cache entre instâncias, responsável desativado, nome
+  repetido, erro silencioso ao carregar listas, ids grandes) e security-review sem achados.
+
+---
+
 ## 2026-10-16 — R-006: suíte do backend também em Postgres
 
 **O quê**

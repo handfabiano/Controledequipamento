@@ -77,8 +77,17 @@ export const equipamentos = {
   reportarProblema: (id, data) => api.post(`/equipamentos/${id}/problemas`, data),
   resolverProblema: (id, problemaId) => api.put(`/equipamentos/${id}/problemas/${problemaId}/resolver`),
   listarCategorias: () => api.get('/equipamentos/categorias'),
+  criarCategoria: (data) => api.post('/equipamentos/categorias', data),
+  atualizarCategoria: (id, data) => api.put(`/equipamentos/categorias/${id}`, data),
   gerarQRCode: (id) => api.get(`/equipamentos/${id}/qrcode`),
   gerarEtiqueta: (id) => `${API_URL}/equipamentos/${id}/etiqueta`,
+};
+
+// Depósitos (todos listam; o coordenador cria e edita)
+export const depositos = {
+  listar: () => api.get('/depositos'),
+  criar: (data) => api.post('/depositos', data),
+  atualizar: (id, data) => api.put(`/depositos/${id}`, data),
 };
 
 // Transferências
