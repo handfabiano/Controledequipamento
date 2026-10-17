@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-16 (após R-006)_
+_Última verificação: 2026-10-17 (após R-008)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **60%** | Inventário da seção 2: (8 Pronto + 0,5 × 13 Parcial) / 24 itens (F-03 Pronto após R-004) |
-| Testes do backend | 131/131 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local e no CI (PR #22, run 38955169214) |
+| Conclusão funcional | **65%** | Inventário da seção 2: (9 Pronto + 0,5 × 13 Parcial) / 24 itens (F-24 Pronto após R-008) |
+| Testes do backend | 137/137 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-17, após R-008) |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -36,6 +36,10 @@ usuários pela tela; todos trocam a própria senha. Desativar encerra as sessõe
 token só vale para usuário ativo e o perfil vem do banco (verificado em SQLite, Postgres 16 e no
 navegador).
 
+**Atualização 2026-10-17 (R-008):** o schema passou a ter migrações versionadas, aplicadas uma
+vez cada; cold starts simultâneos em banco vazio não duplicam mais o catálogo (verificado em
+SQLite e Postgres 16, inclusive sem a trava, quando o teste falha).
+
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
 coberto por testes. O que impede o lançamento é o entorno: um banco de produção novo nasce
@@ -51,9 +55,9 @@ o build de produção do frontend aponta para `localhost` se uma variável não 
 2. ~~**Frontend de produção chama `http://localhost:3001/api`**~~ (resolvido em R-003,
    2026-10-14): o padrão é `/api` na mesma origem e `REACT_APP_API_URL` está no `DEPLOY.md`.
    Um valor errado definido no painel da Vercel ainda passaria sem aviso. → R-037.
-3. **Produção em Postgres sem migrations e deploy não verificado** (Alto): desde R-006
-   (2026-10-16) a suíte roda em Postgres 16 no CI; faltam migrations e verificar o deploy real.
-   → R-007, R-008.
+3. **Deploy não verificado** (Alto): desde R-006 (2026-10-16) a suíte roda em Postgres 16 no CI
+   e desde R-008 (2026-10-17) o schema tem migrações versionadas; falta verificar o deploy real e
+   o schema do banco de produção, se ele já existir. → R-007, R-042.
 4. ~~**Sem gestão de usuários**~~ (resolvido em R-004 e R-023, 2026-10-15). Fica: trocar a
    senha não derruba outras sessões já abertas (até 24h). → R-038.
 5. **Sem transações** (Alto): operações de várias etapas (concluir transferência, alocar
@@ -117,7 +121,7 @@ _Última verificação: 2026-10-15 (após R-004)_
 | F-21 | Dashboard | Pronto | `dashboardController.resumo`; testes em `dashboard.test.js` |
 | F-22 | Relatórios e exportação | Pendente | Listado como futuro no README |
 | F-23 | Deploy de produção funcionando | Bloqueado | Sem acesso à Vercel/banco de produção para verificar |
-| F-24 | Migrations de schema | Pendente | Schema aplicado com `CREATE TABLE IF NOT EXISTS` a cada cold start (`init.js:11-19`) |
+| F-24 | Migrations de schema | Pronto | `server/database/migracoes.js` aplica `migracoes/NNN_*.sql` uma vez, sob trava entre instâncias (R-008, testes em `migracoes.test.js`) |
 
 Funcionalidades "de fachada" (API pronta, sem uso na tela): F-07, F-08, F-10, F-11
 (geração), F-13, F-14, F-19, além de `transferencias.buscarPorId`.
@@ -126,29 +130,31 @@ Funcionalidades "de fachada" (API pronta, sem uso na tela): F-07, F-08, F-10, F-
 
 ## 3. Banco de dados
 
-_Última verificação: 2026-10-14 (após R-001)_
+_Última verificação: 2026-10-17 (após R-008)_
 
 - **Tabelas (13)**: `usuarios`, `depositos`, `categorias_equipamentos`, `equipamentos`,
   `problemas_equipamentos`, `templates_eventos`, `checklist_template`, `eventos`,
   `responsaveis_evento`, `equipamentos_evento`, `transferencias`, `historico_movimentacoes`,
-  `notificacoes`. Definidas em `schema.sql` e `schema.pg.sql`; os dois divergem só em tipos
+  `notificacoes`, mais `migracoes` (controle). Definidas em `migracoes/001_schema_inicial.sql` e `.pg.sql`; os dois divergem só em tipos
   (`AUTOINCREMENT`/`IDENTITY`, `DATETIME`/`TIMESTAMPTZ`) — conferido com `diff`.
 - **Relacionamentos**: FKs declaradas em todas as tabelas filhas. No SQLite **não são
   aplicadas** (não há `PRAGMA foreign_keys = ON` em `db.js`). Nenhuma FK tem `ON DELETE`.
 - **Índices**: 12 índices (status, depósito, tombamento, transferências por equipamento,
   notificações por usuário etc.). Falta índice/restrição de unicidade para "uma transferência
   ativa por equipamento" (a regra é só verificada no código).
-- **Migrations**: não existem. Qualquer coluna nova em tabela existente não é aplicada em
-  produção. O DDL roda a cada cold start (latência e corrida entre instâncias simultâneas no
-  Postgres — inferido).
+- **Migrations** (R-008, verificado 2026-10-17): pares `NNN_nome.sql`/`NNN_nome.pg.sql` em
+  `server/database/migracoes/`, cada um aplicado uma vez e registrado em `migracoes` (D-015).
+  Migrações, catálogo e seed rodam numa transação só, sob `pg_advisory_xact_lock` no Postgres; com banco já em dia, o custo do
+  cold start é uma consulta à tabela de controle. Um banco criado antes disso recebe a `001` sem
+  mudança (testado com um banco gerado pelo código do `main`), mas pode ter colunas faltando
+  (R-042).
 - **RLS/permissões**: não se aplica ao app (acesso só pelo backend com uma credencial). Se o
   Postgres for Supabase, as tabelas ficam no schema `public` sem RLS e expostas à API REST do
   Supabase para quem tiver a chave anon — **verificar quando o banco de produção for
   identificado** (R-007).
 - **Catálogo básico** (R-001, verificado 2026-10-14): `server/database/catalogo.js` preenche
   categorias, templates + checklist e o "Depósito Central" em todo banco, cada tabela só
-  enquanto está vazia (D-009). Dois cold starts simultâneos em banco vazio podem duplicar o
-  catálogo (sem restrição de unicidade); fica para R-008.
+  enquanto está vazia (D-009), com exclusividade entre instâncias e numa transação (R-008).
 - **Dados fictícios**: seed de demonstração (usuários com senha `123456`, equipamentos
   exemplo, depósitos Zona Norte/Sul) só com `NODE_ENV=development|test` ou
   `SEED_DEMO_DATA=true` (`config.js:64`).
@@ -270,13 +276,13 @@ cabeçalhos de segurança; log de acessos negados; seed demo desligado em produ�
 
 ## 8. Qualidade
 
-_Última verificação: 2026-10-16_
+_Última verificação: 2026-10-17_
 
-- **Testes**: 131 testes de integração do backend, todos passando; cobrem auth, perfis,
+- **Testes**: 137 testes de integração do backend, todos passando; cobrem auth, perfis,
   equipamentos, eventos, transferências, dashboard, config, cabeçalhos, segurança, TLS.
-  Os que sobem o app rodam também em Postgres com `TEST_DATABASE_URL` (131/131 local); os de
+  Os que sobem o app rodam também em Postgres com `TEST_DATABASE_URL` (137/137 local); os de
   config/seed em processo filho seguem só em SQLite. Sem testes de frontend.
-- **Dívida técnica**: sem transações; schema sem migrations; CRA descontinuado; `alert()`
+- **Dívida técnica**: sem transações nas regras de negócio; CRA descontinuado; `alert()`
   como feedback; controllers longos (`transferenciasController.js` 758 linhas).
 - **Código morto**: funções do `api.js` sem uso na tela (ver seção 2); `authLimiter`
   importado sem uso em `index.js`; `transferencias.buscarPorId`.

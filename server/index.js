@@ -27,16 +27,21 @@ try {
 
 const PORT = process.env.PORT || 3001;
 
-// Inicializar banco de dados (necessário para ambos os ambientes)
-let dbInitialized = false;
+// Inicializar banco de dados (necessário para ambos os ambientes). Requisições que chegam juntas no
+// cold start esperam a mesma inicialização; se ela falhar, a próxima requisição tenta de novo
+let inicializacao = null;
 
-async function ensureDatabase() {
-  if (!dbInitialized) {
+function ensureDatabase() {
+  if (!inicializacao) {
     console.log('Inicializando banco de dados...');
-    await initializeDatabase();
-    console.log('Banco de dados inicializado com sucesso!');
-    dbInitialized = true;
+    inicializacao = initializeDatabase()
+      .then(() => console.log('Banco de dados inicializado com sucesso!'))
+      .catch((erro) => {
+        inicializacao = null;
+        throw erro;
+      });
   }
+  return inicializacao;
 }
 
 // Middleware

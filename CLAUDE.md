@@ -80,8 +80,9 @@ Antes de dar uma tarefa como pronta: `npm test` verde **e** `cd client && npm ru
 - `server/database/db.js` — camada única de acesso com **dois drivers**: Postgres quando
   `DATABASE_URL` existe (produção/Vercel) e SQLite caso contrário. As queries usam
   placeholders `?` (convertidos para `$1…` no Postgres) e `runAsync/getAsync/allAsync`.
-- **Todo schema novo deve ser escrito em `schema.sql` (SQLite) E `schema.pg.sql`
-  (Postgres).** Escreva SQL que rode nos dois (sem funções exclusivas de um driver).
+- **Toda mudança de schema é uma migração nova em `server/database/migracoes/`, com os dois
+  arquivos: `NNN_nome.sql` (SQLite) E `NNN_nome.pg.sql` (Postgres).** Nunca edite uma migração já
+  aplicada; comandos separados por `;` (sem `;` dentro de strings). Ver D-015.
 - `client/` — React (CRA). Chamadas HTTP em `client/src/services/api.js`.
 - Deploy na Vercel (`vercel.json`); ver `DEPLOY.md`. SQLite não persiste lá.
 
