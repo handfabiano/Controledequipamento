@@ -54,8 +54,13 @@ LOGIN_RATE_LIMIT_MAX=5 # Tentativas de login FALHAS por IP a cada 15 min (padrã
 
 O backend escolhe o driver automaticamente:
 
-- **`DATABASE_URL` definido** → Postgres (`pg`), com schema em `server/database/schema.pg.sql`
+- **`DATABASE_URL` definido** → Postgres (`pg`), com schema nas migrações `server/database/migracoes/*.pg.sql`
 - **Sem `DATABASE_URL`** → SQLite local em `server/database/equipamentos.db` (apenas desenvolvimento)
+
+Na primeira requisição de cada instância o servidor aplica as migrações pendentes (uma vez cada,
+registradas na tabela `migracoes`) e o catálogo básico, numa transação com `pg_advisory_xact_lock` (funciona também no pooler da porta 6543): vários cold
+starts ao mesmo tempo esperam a vez em vez de duplicar dados. O usuário do `DATABASE_URL` precisa
+de permissão para criar e alterar tabelas.
 
 ⚠️ **SQLite NÃO persiste na Vercel** — o filesystem das functions é efêmero e os dados
 são perdidos a cada cold start. Em produção, configure `DATABASE_URL` apontando para

@@ -1,41 +1,36 @@
-const path = require('path');
-const fs = require('fs');
 const { hashSenha } = require('../services/senhas');
 const { seedDemoData, bootstrapToken } = require('../config');
-const { usePostgres, runAsync, getAsync, allAsync, placeholders } = require('./db');
+const { usePostgres, runAsync, getAsync, allAsync, placeholders, comExclusividade } = require('./db');
+const { aplicarMigracoes } = require('./migracoes');
 const { garantirCatalogo, idPorNome, DEPOSITO_PADRAO } = require('./catalogo');
 
 async function initializeDatabase() {
   try {
     console.log(`Inicializando banco de dados (${usePostgres ? 'Postgres' : 'SQLite'})...`);
 
-    const schemaFile = usePostgres ? 'schema.pg.sql' : 'schema.sql';
-    const schema = fs.readFileSync(path.join(__dirname, schemaFile), 'utf8');
-    const statements = schema.split(';').filter(stmt => stmt.trim());
+    // Migrações, catálogo e seed numa transação só e de uma instância por vez: cold starts
+    // simultâneos em banco vazio duplicariam o catálogo e os dados de demonstração, e uma falha no
+    // meio deixaria o banco pela metade sem nunca tentar de novo
+    await comExclusividade(async (conexao) => {
+      const novas = await aplicarMigracoes(conexao);
+      console.log(novas.length > 0 ? `Migrações aplicadas: ${novas.join(', ')}` : 'Schema em dia.');
 
-    for (const statement of statements) {
-      if (statement.trim()) {
-        await runAsync(statement);
+      // Categorias, templates e depósito padrão: necessários também em produção
+      await garantirCatalogo(conexao);
+
+      const userCount = await conexao.get('SELECT COUNT(*) as count FROM usuarios');
+
+      if (userCount.count === 0 && seedDemoData) {
+        console.log('Inserindo dados iniciais de demonstração...');
+        await insertInitialData(conexao);
+        console.log('Dados iniciais inseridos com sucesso!');
+      } else if (userCount.count === 0 && !bootstrapToken) {
+        console.warn(
+          'AVISO: banco sem usuários e BOOTSTRAP_TOKEN não definido — qualquer pessoa pode fazer o primeiro ' +
+          'cadastro (POST /api/auth/register) até ele existir. Defina BOOTSTRAP_TOKEN.'
+        );
       }
-    }
-
-    console.log('Schema criado com sucesso!');
-
-    // Categorias, templates e depósito padrão: necessários também em produção
-    await garantirCatalogo();
-
-    const userCount = await getAsync('SELECT COUNT(*) as count FROM usuarios');
-
-    if (userCount.count === 0 && seedDemoData) {
-      console.log('Inserindo dados iniciais de demonstração...');
-      await insertInitialData();
-      console.log('Dados iniciais inseridos com sucesso!');
-    } else if (userCount.count === 0 && !bootstrapToken) {
-      console.warn(
-        'AVISO: banco sem usuários e BOOTSTRAP_TOKEN não definido — qualquer pessoa pode fazer o primeiro ' +
-        'cadastro (POST /api/auth/register) até ele existir. Defina BOOTSTRAP_TOKEN.'
-      );
-    }
+    });
 
     console.log('Banco de dados pronto!');
   } catch (error) {
@@ -70,11 +65,12 @@ async function gerarCodigo(prefixo) {
   return `${prefixo}${numero.toString().padStart(4, '0')}`;
 }
 
-async function insertInitialData() {
+// conexao: a de comExclusividade (db.js), dentro da mesma transação das migrações
+async function insertInitialData(conexao) {
   const senhaHash = await hashSenha('123456');
 
   // Usuários
-  await runAsync(`
+  await conexao.run(`
     INSERT INTO usuarios (nome, email, senha, tipo) VALUES
     ('Coordenador Principal', 'coordenador@sistema.com', ?, 'coordenador'),
     ('João Silva', 'joao@sistema.com', ?, 'responsavel_entrega'),
@@ -84,12 +80,12 @@ async function insertInitialData() {
 
   // Depósitos além do Depósito Central, que vem do catálogo básico (catalogo.js) junto com as
   // categorias usadas abaixo. Os testes contam com os ids 1, 2 e 3, na ordem.
-  await runAsync(`
+  await conexao.run(`
     INSERT INTO depositos (nome, endereco, responsavel_id) VALUES
     ('Depósito Zona Norte', 'Av. Norte, 200', 2),
     ('Depósito Zona Sul', 'Av. Sul, 300', 3)
   `);
-  await runAsync(
+  await conexao.run(
     "UPDATE depositos SET endereco = 'Rua Principal, 100', responsavel_id = 1 WHERE nome = ? AND endereco IS NULL",
     [DEPOSITO_PADRAO]
   );
@@ -127,13 +123,13 @@ async function insertInitialData() {
   ];
 
   // Categorias e depósitos são referenciados pelo nome, não por id
-  const categorias = await idPorNome('categorias_equipamentos');
-  const depositos = await idPorNome('depositos');
+  const categorias = await idPorNome('categorias_equipamentos', conexao);
+  const depositos = await idPorNome('depositos', conexao);
 
   let movingHeadId = null;
   // Categoria renomeada antes do seed: o equipamento de exemplo fica de fora (não quebra a subida)
   for (const eq of equipamentos.filter((item) => categorias.has(item.categoria))) {
-    const result = await runAsync(`
+    const result = await conexao.run(`
       INSERT INTO equipamentos (codigo, tombamento, nome, categoria_id, marca, modelo, deposito_id, condicao, observacoes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [eq.codigo, eq.tombamento, eq.nome, categorias.get(eq.categoria), eq.marca, eq.modelo, depositos.get(eq.deposito) ?? null, eq.condicao || 'bom', eq.observacoes || null]);
@@ -145,7 +141,7 @@ async function insertInitialData() {
 
   // Adicionar um problema no Moving Head
   if (movingHeadId) {
-    await runAsync(`
+    await conexao.run(`
       INSERT INTO problemas_equipamentos (equipamento_id, descricao, gravidade, reportado_por)
       VALUES (?, 'Motor fazendo ruído estranho ao movimentar. Pode falhar durante o evento.', 'media', 4)
     `, [movingHeadId]);
