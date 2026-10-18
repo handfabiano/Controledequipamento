@@ -37,9 +37,14 @@ function Layout() {
             Eventos
           </Link>
           {isCoordenador() && (
-            <Link to="/usuarios" className={isActive('/usuarios') ? 'active' : ''}>
-              Usuários
-            </Link>
+            <>
+              <Link to="/cadastros" className={isActive('/cadastros') ? 'active' : ''}>
+                Cadastros
+              </Link>
+              <Link to="/usuarios" className={isActive('/usuarios') ? 'active' : ''}>
+                Usuários
+              </Link>
+            </>
           )}
         </div>
         <div className="navbar-user">

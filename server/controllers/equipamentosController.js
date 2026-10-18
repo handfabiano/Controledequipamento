@@ -1,6 +1,5 @@
 const { getAsync, allAsync, runAsync, placeholders, gerarTombamento, gerarCodigo } = require('../database/init');
 const QRCode = require('qrcode');
-const cache = require('../cache');
 const {
   STATUS_MANUAIS,
   GRAVIDADES_GRAVES,
@@ -422,29 +421,6 @@ const equipamentosController = {
     } catch (error) {
       console.error('Erro ao resolver problema:', error);
       res.status(500).json({ error: 'Erro ao resolver problema' });
-    }
-  },
-
-  // Listar categorias
-  async listarCategorias(req, res) {
-    try {
-      const cacheKey = 'categorias:all';
-
-      // Tentar buscar do cache
-      let categorias = cache.get(cacheKey);
-
-      if (!categorias) {
-        // Buscar do banco
-        categorias = await allAsync('SELECT * FROM categorias_equipamentos ORDER BY tipo, nome');
-
-        // Salvar no cache por 24 horas (86400 segundos)
-        cache.set(cacheKey, categorias, 86400);
-      }
-
-      res.json(categorias);
-    } catch (error) {
-      console.error('Erro ao listar categorias:', error);
-      res.status(500).json({ error: 'Erro ao listar categorias' });
     }
   },
 

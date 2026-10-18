@@ -110,6 +110,19 @@ dos commits (marcadas como "retroativa").
 - **Consequências**: a URL precisa de permissão para criar bancos; os testes em processo filho
   (config/seed) seguem em SQLite.
 
+## D-014 — Cadastros validados no controller com mensagem única; categorias sem cache
+- **Data**: 2026-10-17
+- **Decisão**: as rotas de depósitos e categorias validam com os helpers de
+  `services/validacao.js` (`textoObrigatorio`, `textoOuNulo`, `idValido`), que lançam
+  `ErroDeEntrada`; `tratarErros` transforma isso em 400 `{ error }` com a mensagem do campo. A
+  lista de categorias deixou de ter cache em memória.
+- **Motivo**: a tela mostra `error` direto ao usuário, e o `validate` do express-validator devolve
+  só "Dados inválidos" (o detalhe fica em `details`). O cache em memória é por instância: na
+  Vercel, uma categoria criada numa instância ficaria até 24h fora da lista nas outras, e a
+  tabela é pequena.
+- **Consequências**: rotas novas com formulário podem usar os mesmos helpers; o
+  `equipamentoValidator` continua como está.
+
 ## D-015 — Migrações em pares de arquivos SQL, serializadas por advisory lock
 - **Data**: 2026-10-17
 - **Decisão**: o schema vive em `server/database/migracoes/NNN_nome.sql` (SQLite) e

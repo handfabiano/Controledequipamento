@@ -8,6 +8,7 @@ import Transferencias from './pages/Transferencias';
 import Eventos from './pages/Eventos';
 import Usuarios from './pages/Usuarios';
 import MinhaConta from './pages/MinhaConta';
+import Cadastros from './pages/Cadastros';
 import Layout from './components/Layout';
 
 const PrivateRoute = ({ children }) => {
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="transferencias" element={<Transferencias />} />
           <Route path="eventos" element={<Eventos />} />
           <Route path="usuarios" element={<SoCoordenador><Usuarios /></SoCoordenador>} />
+          <Route path="cadastros" element={<SoCoordenador><Cadastros /></SoCoordenador>} />
           <Route path="minha-conta" element={<MinhaConta />} />
         </Route>
       </Routes>
