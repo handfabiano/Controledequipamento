@@ -46,6 +46,53 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-17 — R-008: migrações versionadas
+
+**O quê**
+- `server/database/migracoes/`: o schema virou a migração `001_schema_inicial` (`.sql` para SQLite,
+  `.pg.sql` para Postgres; antes `schema.sql`/`schema.pg.sql`). `migracoes.js` aplica as pendentes
+  em ordem e registra na tabela `migracoes`. Versão sem os dois arquivos ou repetida impede a
+  subida.
+- `db.js`: `comExclusividade` roda migrações, catálogo básico e seed de demonstração numa
+  transação só, uma instância por vez (Postgres: `pg_advisory_xact_lock` com `lock_timeout` de
+  20s, compatível com o pooler do Supabase na porta 6543; SQLite: `BEGIN IMMEDIATE` e fila em
+  memória). SQL sem parâmetros vai ao Postgres sem trocar `?` por `$n`.
+- `index.js`: requisições simultâneas no cold start esperam a mesma inicialização (antes cada uma
+  podia disparar a sua); se falhar, a próxima tenta de novo.
+- `vercel.json`: `includeFiles` leva `server/database/migracoes/**` para a função (o diretório é
+  lido em tempo de execução, e o rastreio de dependências da Vercel não o enxerga).
+- Docs: D-015, CLAUDE.md (convenção de schema), DEPLOY.md, README. Novo item R-042 (banco de
+  produção antigo pode ter colunas faltando).
+
+**Por quê**
+- O DDL a cada cold start não acrescentava coluna a tabela existente, e dois cold starts
+  simultâneos em banco vazio podiam duplicar o catálogo (R-008, pré-requisito de R-021 e R-038).
+
+**Verificado**
+- `server/tests/migracoes.test.js` (6 testes): dois `initializeDatabase` e duas requisições ao
+  mesmo tempo em banco vazio deixam 10 categorias, 4 templates, 6 itens de checklist e 1 depósito;
+  reiniciar não reaplica; uma migração `002` com `ALTER TABLE ... ADD COLUMN` aplica uma vez em
+  banco existente; uma migração que falha no segundo comando desfaz o primeiro e não é
+  registrada; migração só num driver é recusada.
+- Sem a trava do Postgres, o teste de cold start simultâneo falha (2 de 2 rodadas): a trava é o
+  que impede a duplicação. Com o lock segurado por outra sessão no `psql`, a inicialização desiste
+  em 20s ("lock timeout") e a seguinte, já sem o lock, passa. Com `PG_POOL_MAX=1` e seed ligado, o
+  banco vazio inicializa (15 equipamentos), sem esperar conexão do pool.
+- Uma migração com `DEFAULT 'conferido?'` grava o texto igual nos dois bancos.
+- Banco gerado pelo código do `main` (SQLite e Postgres 16, com seed): o código novo registra a
+  `001` sem erro e sem duplicar usuários (4) nem categorias (10).
+- `npm test`: 137/137 em SQLite e 137/137 em Postgres 16 local. O client não mudou.
+- code-review high: a primeira versão usava lock de sessão, que vaza atrás do pooler em modo
+  transação e não tinha tempo máximo de espera, e o seed rodava fora da transação pelo pool (com
+  `PG_POOL_MAX=1`, esperava para sempre). As três coisas foram corrigidas.
+
+**Riscos que ficam**
+- Comandos separados por `;`: uma migração futura com função PL/pgSQL precisará de outro
+  separador.
+- Banco de produção existente não foi visto (R-007, R-042).
+
+---
+
 ## 2026-10-16 — R-006: suíte do backend também em Postgres
 
 **O quê**

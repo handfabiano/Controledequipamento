@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 60%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-17, após R-002 (sem mudança: F-04 e F-06 seguem parciais por templates e prefixo).
+**Conclusão do sistema: 65%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-18, após R-008 (F-24 Pronto) e R-002 (F-04 e F-06 seguem parciais por templates e prefixo).
 
 ---
 
@@ -29,7 +29,7 @@ Sem estes itens o sistema não funciona em produção.
 | R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pendente | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pronto (2026-10-16) | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
-| R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pendente | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
+| R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pronto (2026-10-17) | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
 
 ## Fase 1 — Fluxos principais completos na tela
 
@@ -56,9 +56,10 @@ Sem estes itens o sistema não funciona em produção.
 | R-026 | `validarChecklist` ignorar alocações devolvidas, igual à aprovação | Pendente | Baixo | P | — | Teste: após devolução, checklist e aprovação concordam |
 | R-027 | Dependências: `sqlite3` 6 (tar crítico) e sair do CRA (Vite) | Pendente | Médio | G | — | `npm audit --omit=dev` sem críticas/altas no backend; build do client sem `react-scripts` |
 | R-028 | Alocação ciente de datas (reserva por período) | Pendente | Médio | M | R-020 | Equipamento alocado em evento futuro pode ir a outro evento sem sobreposição; teste |
+| R-042 | Banco de produção criado antes das migrações: conferir se as tabelas têm todas as colunas da `001_schema_inicial` (o `CREATE TABLE IF NOT EXISTS` antigo nunca acrescentava coluna a tabela já existente) e, se faltar, escrever a migração que completa | Pendente | Médio | P | R-007 | Comparação coluna a coluna registrada no CHANGELOG; banco de produção igual ao de um banco novo |
 | R-038 | Trocar a senha encerra as outras sessões (versão de senha no token ou data da troca) | Pendente | Baixo | P | R-008 | Teste: token emitido antes da troca recebe 401; o da sessão atual segue válido ou é reemitido |
 | R-039 | API e tela de coordenador para templates de evento e seus checklists (criar, editar) | Pendente | Médio | M | R-002 | Coordenador cria um template com checklist pela tela e o usa ao criar evento; não-coordenador recebe 403; testes de API |
-| R-040 | Nome único de depósito e de categoria garantido no banco (índice em `LOWER(nome)`), não só na checagem da API | Pendente | Baixo | P | R-008 | Dois cadastros simultâneos com o mesmo nome: um 201, outro 400 (teste) |
+| R-040 | Nome único de depósito e de categoria garantido no banco (índice em `LOWER(nome)`), não só na checagem da API. Atenção: o `LOWER` do SQLite só converte letras ASCII (`LOWER('DEPÓSITO')` dá `depÓsito`), então a chave normalizada deve ser calculada em JS | Pendente | Baixo | P | R-008 | Dois cadastros simultâneos com o mesmo nome: um 201, outro 400 (teste) |
 | R-041 | Ids acima do `INTEGER` do Postgres dão 500 nas rotas antigas (ex.: `PUT /api/usuarios/99999999999/ativo`); usar `idValido` de `services/validacao.js` | Pendente | Baixo | P | — | Mesmas rotas respondem 400/404 em SQLite e Postgres (teste) |
 | R-029 | Regra de quem pode solicitar transferência (hoje qualquer autenticado) | Pendente | Baixo | P | decisão do usuário | Regra registrada em DECISOES e testada |
 
@@ -80,5 +81,4 @@ Sem estes itens o sistema não funciona em produção.
 ## Fila atual
 
 1. **R-005** — código automático por prefixo no cadastro de equipamento (Alto, P, depende de R-002, pronto).
-2. **R-008** — migrations versionadas (Alto, M, depende de R-006, pronto).
-3. **R-007** — aguardando acesso (Vercel e banco de produção).
+2. **R-007** — aguardando acesso (Vercel e banco de produção).

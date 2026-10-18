@@ -70,6 +70,9 @@ dos commits (marcadas como "retroativa").
 - **Consequências**: sem restrição de unicidade, dois cold starts simultâneos em banco vazio podem
   duplicar o catálogo; quando houver migrations (R-008), o catálogo vira uma migração de dados que
   roda uma vez. O seed de demonstração referencia categorias e depósitos pelo nome.
+  _Atualizado em 2026-10-17 (R-008, D-015)_: o catálogo continua fora das migrações (só preenche
+  tabela vazia), mas roda com exclusividade entre instâncias e numa transação, o que já impede a
+  duplicação.
 
 ## D-010 — API na mesma origem por padrão no client
 - **Data**: 2026-10-14
@@ -120,3 +123,26 @@ dos commits (marcadas como "retroativa").
 - **Consequências**: rotas novas com formulário podem usar os mesmos helpers; o
   `equipamentoValidator` continua como está.
 
+## D-015 — Migrações em pares de arquivos SQL, serializadas por advisory lock
+- **Data**: 2026-10-17
+- **Decisão**: o schema vive em `server/database/migracoes/NNN_nome.sql` (SQLite) e
+  `NNN_nome.pg.sql` (Postgres). `migracoes.js` aplica as pendentes em ordem e registra a versão
+  na tabela `migracoes`; falta de um dos dois arquivos é erro na subida. Migrações, catálogo e seed
+  rodam dentro de `comExclusividade` (`db.js`), numa transação só: no Postgres, com
+  `pg_advisory_xact_lock` e `lock_timeout` de 20s; no SQLite, `BEGIN IMMEDIATE` e uma fila em
+  memória. O antigo
+  `schema.sql`/`schema.pg.sql` virou a `001_schema_inicial`, que mantém o `IF NOT EXISTS` para
+  bancos criados antes das migrações. Sem biblioteca de migração.
+- **Motivo**: o DDL a cada cold start não acrescentava coluna a tabela existente e corria entre
+  instâncias (R-008). Dois arquivos por versão seguem a regra de SQL escrito para cada driver. O
+  lock de **transação** (não o de sessão) funciona atrás do pooler do Supabase em modo transação
+  (porta 6543, a que o DEPLOY.md recomenda) e é solto no COMMIT/ROLLBACK ou se a conexão cair; o
+  `lock_timeout` impede que uma instância travada congele as outras (a espera falha com 500 e a
+  próxima requisição tenta de novo). Tudo numa transação: uma falha no meio do seed ou de uma
+  migração não deixa o banco pela metade. Uma lib (knex, node-pg-migrate) traria dependência para algo de ~60 linhas.
+- **Consequências**: mudança de schema = nova migração com os dois arquivos, nunca editar uma já
+  aplicada. Os comandos são separados por `;` (sem `;` dentro de strings ou funções); SQL sem
+  parâmetros vai ao Postgres sem conversão de `?`. A
+  `001` não é reaplicada, então um banco antigo com colunas faltando precisa de migração própria
+  (R-042). O `index.js` memoriza a inicialização, e requisições simultâneas no cold start esperam
+  a mesma.
