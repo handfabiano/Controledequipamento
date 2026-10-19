@@ -425,3 +425,48 @@ test('falha ao aplicar a conclusão desfaz a etapa e permite repetir (sem travar
   assert.strictEqual(eq.deposito_id, 3);
   assert.strictEqual(eq.historico.filter((h) => h.tipo_movimentacao === 'transferencia').length, 1);
 });
+
+// R-010: a tela escolhe pessoas e locais pelo nome
+test('qualquer usuário logado lista os usuários ativos, só com nome e perfil', async () => {
+  const { id: inativo } = await srv.criarUsuario({ nome: 'Saiu da Equipe', email: 'saiu@sistema.com' }, t.coordenador);
+  await srv.req('PUT', `/api/usuarios/${inativo}/ativo`, { token: t.coordenador, body: { ativo: false } });
+
+  const r = await srv.req('GET', '/api/usuarios/ativos', { token: t.tecnico });
+  assert.strictEqual(r.status, 200, r.text);
+  const entrega = r.body.find((u) => u.id === USUARIOS.entrega.id);
+  assert.deepStrictEqual(Object.keys(entrega).sort(), ['id', 'nome', 'tipo']);
+  assert.strictEqual(entrega.tipo, 'responsavel_entrega');
+  assert.ok(!r.body.some((u) => u.id === inativo), 'inativo fica fora');
+  assert.strictEqual((await srv.req('GET', '/api/usuarios/ativos')).status, 401);
+});
+
+test('a lista de transferências traz o nome da origem e do destino', async () => {
+  const id = await novoEquipamento({ deposito_id: 1 });
+  const { body: { id: transferenciaId } } = await solicitar(id, {
+    destino_tipo: 'usuario', destino_id: USUARIOS.tecnico.id, responsavel_entrega_id: USUARIOS.entrega.id
+  });
+  const { body: lista } = await srv.req('GET', '/api/transferencias', { token: t.coordenador });
+  const linha = lista.find((tr) => tr.id === transferenciaId);
+  const { body: depositos } = await srv.req('GET', '/api/depositos', { token: t.coordenador });
+  assert.strictEqual(linha.origem_nome, depositos.find((d) => d.id === 1).nome);
+  assert.strictEqual(linha.destino_nome, 'Pedro Oliveira');
+  await srv.req('POST', `/api/transferencias/${transferenciaId}/cancelar`, { token: t.coordenador, body: { motivo: 'teste' } });
+});
+
+test('cada transferência diz quais etapas o usuário pode aprovar agora', async () => {
+  const id = await novoEquipamento();
+  const { body: { id: tid } } = await solicitar(id, { responsavel_entrega_id: USUARIOS.entrega.id });
+  const etapas = async (token) =>
+    (await srv.req('GET', '/api/transferencias', { token })).body.find((tr) => tr.id === tid).pode_aprovar;
+
+  assert.deepStrictEqual(await etapas(t.coordenador), { coordenador: true, entrega: false, recebimento: false },
+    'a entrega tem designado, e o recebimento espera a entrega');
+  assert.deepStrictEqual(await etapas(t.entrega), { coordenador: false, entrega: true, recebimento: false });
+
+  await aprovar(tid, 'entrega', t.entrega);
+  assert.deepStrictEqual(await etapas(t.recebimento), { coordenador: false, entrega: false, recebimento: true });
+  assert.strictEqual((await transf(tid, t.recebimento)).pode_aprovar.recebimento, true, 'o detalhe traz o mesmo');
+
+  await srv.req('POST', `/api/transferencias/${tid}/cancelar`, { token: t.coordenador, body: { motivo: 'teste' } });
+  assert.deepStrictEqual(await etapas(t.coordenador), { coordenador: false, entrega: false, recebimento: false }, 'cancelada');
+});

@@ -146,3 +146,16 @@ dos commits (marcadas como "retroativa").
   `001` não é reaplicada, então um banco antigo com colunas faltando precisa de migração própria
   (R-042). O `index.js` memoriza a inicialização, e requisições simultâneas no cold start esperam
   a mesma.
+
+## D-016 — Quem pode aprovar cada etapa vem do servidor (`pode_aprovar`)
+- **Data**: 2026-10-19
+- **Decisão**: a lista e o detalhe de transferências trazem `pode_aprovar: { coordenador,
+  entrega, recebimento }`, calculado com a mesma `verificarAutorizacaoDaEtapa` que a rota de
+  aprovação usa. A tela mostra os botões a partir disso, sem repetir a regra. Para escolher
+  pessoas pelo nome, `GET /usuarios/ativos` devolve só `id`, `nome` e `tipo` dos usuários ativos
+  a qualquer autenticado; a lista completa (`GET /usuarios`, com e-mail) segue só do coordenador.
+- **Motivo**: a cópia da regra no client (`canApprove`) já tinha divergido do servidor (designado,
+  entrega antes do recebimento). Qualquer perfil pode solicitar transferência e designar quem
+  aprova, então precisa ver nomes e perfis; e-mail não é necessário.
+- **Consequências**: mudar quem aprova uma etapa é mudar só o servidor. Nomes e perfis da equipe
+  ficam visíveis a todo usuário logado.

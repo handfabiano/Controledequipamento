@@ -52,9 +52,11 @@ export const auth = {
   trocarSenha: (senha_atual, nova_senha) => api.put('/auth/senha', { senha_atual, nova_senha }),
 };
 
-// Usuários (coordenador); o cadastro usa auth.register
+// Usuários (coordenador, exceto `ativos`); o cadastro usa auth.register
 export const usuarios = {
   listar: () => api.get('/usuarios'),
+  // Nome e perfil dos ativos, para qualquer usuário logado escolher pessoas pelo nome
+  ativos: () => api.get('/usuarios/ativos'),
   definirAtivo: (id, ativo) => api.put(`/usuarios/${id}/ativo`, { ativo }),
 };
 

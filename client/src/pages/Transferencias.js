@@ -1,7 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { transferencias, equipamentos } from '../services/api';
+import { transferencias, equipamentos, depositos, eventos, usuarios, mensagemDeErro } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { PERFIS } from '../perfis';
+import { STATUS_EVENTO_ATIVO } from '../statusEvento';
 import './Transferencias.css';
+
+const TIPOS_LOCAL = { deposito: 'Depósito', evento: 'Evento', usuario: 'Usuário' };
+
+const LADOS = [
+  { lado: 'origem', rotulo: 'Origem', obrigatorio: false },
+  { lado: 'destino', rotulo: 'Destino', obrigatorio: true },
+];
+
+// Quem pode ser designado em cada etapa: o perfil da etapa ou um coordenador
+const RESPONSAVEIS = [
+  { campo: 'coordenador_id', rotulo: PERFIS.coordenador, perfis: ['coordenador'] },
+  { campo: 'responsavel_entrega_id', rotulo: PERFIS.responsavel_entrega, perfis: ['responsavel_entrega', 'coordenador'] },
+  { campo: 'responsavel_recebimento_id', rotulo: PERFIS.responsavel_recebimento, perfis: ['responsavel_recebimento', 'coordenador'] },
+];
+
+const FORM_VAZIO = {
+  equipamento_id: '',
+  origem_tipo: 'deposito',
+  origem_id: '',
+  destino_tipo: 'deposito',
+  destino_id: '',
+  coordenador_id: '',
+  responsavel_entrega_id: '',
+  responsavel_recebimento_id: '',
+  motivo: '',
+  observacoes: '',
+};
 
 function Transferencias() {
   const { user, isCoordenador } = useAuth();
@@ -9,16 +38,9 @@ function Transferencias() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [equipamentosList, setEquipamentosList] = useState([]);
-
-  const [formData, setFormData] = useState({
-    equipamento_id: '',
-    origem_tipo: 'deposito',
-    origem_id: '',
-    destino_tipo: 'deposito',
-    destino_id: '',
-    motivo: '',
-    observacoes: '',
-  });
+  // Locais e pessoas para escolher pelo nome, relidos a cada abertura do formulário
+  const [referencias, setReferencias] = useState({ depositos: [], eventos: [], pessoas: [] });
+  const [formData, setFormData] = useState(FORM_VAZIO);
 
   useEffect(() => {
     loadData();
@@ -31,15 +53,68 @@ function Transferencias() {
         transferencias.listar(),
         equipamentos.listarTodos(),
       ]);
-
       setTransferenciasList(transferResponse.data);
       setEquipamentosList(equipamentosTodos);
     } catch (error) {
       console.error('Erro ao carregar transferências:', error);
-      alert('Erro ao carregar transferências');
+      alert(mensagemDeErro(error, 'Erro ao carregar transferências'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const carregarReferencias = async () => {
+    try {
+      const [depositosResponse, eventosResponse, pessoasResponse] = await Promise.all([
+        depositos.listar(),
+        eventos.listar(),
+        usuarios.ativos(),
+      ]);
+      setReferencias({
+        depositos: depositosResponse.data,
+        eventos: eventosResponse.data.filter((ev) => STATUS_EVENTO_ATIVO.includes(ev.status)),
+        pessoas: pessoasResponse.data,
+      });
+    } catch (error) {
+      console.error('Erro ao carregar locais e pessoas:', error);
+      alert(mensagemDeErro(error, 'Erro ao carregar locais e pessoas'));
+    }
+  };
+
+  // Opções por nome de cada tipo de local (só eventos ainda abertos recebem equipamento)
+  const opcoesDoLocal = {
+    deposito: referencias.depositos,
+    evento: referencias.eventos.map(({ id, nome, local }) => ({ id, nome: `${nome} (${local})` })),
+    usuario: referencias.pessoas,
+  };
+
+  const campo = (nome, extra = {}) => ({
+    value: formData[nome],
+    onChange: (e) => setFormData({ ...formData, [nome]: e.target.value, ...extra }),
+  });
+
+  // Escolher o equipamento sugere como origem o depósito onde ele está. Em uso, ele está num
+  // evento ou com alguém, então a origem fica para a pessoa escolher.
+  const escolherEquipamento = (e) => {
+    const equipamento = equipamentosList.find((eq) => String(eq.id) === e.target.value);
+    const noDeposito = equipamento?.status === 'disponivel' && equipamento.deposito_id;
+    setFormData({
+      ...formData,
+      equipamento_id: e.target.value,
+      ...(noDeposito
+        ? { origem_tipo: 'deposito', origem_id: String(equipamento.deposito_id) }
+        : { origem_id: '' }),
+    });
+  };
+
+  const abrirModal = () => {
+    setShowModal(true);
+    carregarReferencias();
+  };
+
+  const fecharModal = () => {
+    setShowModal(false);
+    setFormData(FORM_VAZIO);
   };
 
   const handleSubmit = async (e) => {
@@ -48,12 +123,11 @@ function Transferencias() {
     try {
       await transferencias.criar(formData);
       alert('Transferência solicitada com sucesso!');
-      setShowModal(false);
-      resetForm();
+      fecharModal();
       loadData();
     } catch (error) {
       console.error('Erro ao criar transferência:', error);
-      alert(error.response?.data?.error || 'Erro ao criar transferência');
+      alert(mensagemDeErro(error, 'Erro ao criar transferência'));
     }
   };
 
@@ -64,7 +138,7 @@ function Transferencias() {
       loadData();
     } catch (error) {
       console.error('Erro ao aprovar:', error);
-      alert(error.response?.data?.error || 'Erro ao aprovar transferência');
+      alert(mensagemDeErro(error, 'Erro ao aprovar transferência'));
     }
   };
 
@@ -78,20 +152,8 @@ function Transferencias() {
       loadData();
     } catch (error) {
       console.error('Erro ao cancelar:', error);
-      alert(error.response?.data?.error || 'Erro ao cancelar transferência');
+      alert(mensagemDeErro(error, 'Erro ao cancelar transferência'));
     }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      equipamento_id: '',
-      origem_tipo: 'deposito',
-      origem_id: '',
-      destino_tipo: 'deposito',
-      destino_id: '',
-      motivo: '',
-      observacoes: '',
-    });
   };
 
   const getStatusBadge = (status) => {
@@ -105,26 +167,6 @@ function Transferencias() {
     return badges[status] || 'badge-secondary';
   };
 
-  const canApprove = (transferencia, tipo) => {
-    if (transferencia.status === 'concluida' || transferencia.status === 'cancelada') {
-      return false;
-    }
-
-    switch (tipo) {
-      case 'coordenador':
-        return isCoordenador() && !transferencia.aprovacao_coordenador;
-      case 'entrega':
-        return (user?.tipo === 'responsavel_entrega' || user?.tipo === 'coordenador') &&
-               !transferencia.aprovacao_entrega;
-      case 'recebimento':
-        return (user?.tipo === 'responsavel_recebimento' || user?.tipo === 'coordenador') &&
-               !transferencia.aprovacao_recebimento &&
-               Boolean(transferencia.aprovacao_entrega);
-      default:
-        return false;
-    }
-  };
-
   if (loading) {
     return <div className="loading">Carregando transferências...</div>;
   }
@@ -133,7 +175,7 @@ function Transferencias() {
     <div className="transferencias-page">
       <div className="page-header">
         <h1>Transferências</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={abrirModal}>
           + Nova Transferência
         </button>
       </div>
@@ -170,9 +212,9 @@ function Transferencias() {
                   <small>{trans.equipamento_nome}</small>
                 </td>
                 <td>
-                  <span className="badge badge-secondary">{trans.origem_tipo}</span>
-                  →
-                  <span className="badge badge-secondary">{trans.destino_tipo}</span>
+                  {trans.origem_nome || 'Não informada'} <small>({TIPOS_LOCAL[trans.origem_tipo]})</small>
+                  {' → '}
+                  {trans.destino_nome} <small>({TIPOS_LOCAL[trans.destino_tipo]})</small>
                 </td>
                 <td>{trans.solicitante_nome}</td>
                 <td>
@@ -195,7 +237,7 @@ function Transferencias() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    {canApprove(trans, 'coordenador') && (
+                    {trans.pode_aprovar?.coordenador && (
                       <button
                         className="btn btn-sm btn-success"
                         onClick={() => handleAprovar(trans.id, 'coordenador')}
@@ -203,7 +245,7 @@ function Transferencias() {
                         Aprovar (Coord)
                       </button>
                     )}
-                    {canApprove(trans, 'entrega') && (
+                    {trans.pode_aprovar?.entrega && (
                       <button
                         className="btn btn-sm btn-success"
                         onClick={() => handleAprovar(trans.id, 'entrega')}
@@ -211,7 +253,7 @@ function Transferencias() {
                         Confirmar Entrega
                       </button>
                     )}
-                    {canApprove(trans, 'recebimento') && (
+                    {trans.pode_aprovar?.recebimento && (
                       <button
                         className="btn btn-sm btn-success"
                         onClick={() => handleAprovar(trans.id, 'recebimento')}
@@ -242,21 +284,17 @@ function Transferencias() {
 
       {/* Modal de Nova Transferência */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={fecharModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Nova Transferência</h2>
-              <button className="close-btn" onClick={() => setShowModal(false)}>×</button>
+              <button className="close-btn" onClick={fecharModal}>×</button>
             </div>
 
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label>Equipamento *</label>
-                <select
-                  value={formData.equipamento_id}
-                  onChange={(e) => setFormData({ ...formData, equipamento_id: e.target.value })}
-                  required
-                >
+                <label htmlFor="transf-equipamento">Equipamento *</label>
+                <select id="transf-equipamento" value={formData.equipamento_id} onChange={escolherEquipamento} required>
                   <option value="">Selecione...</option>
                   {equipamentosList
                     .filter(eq => eq.status === 'disponivel' || eq.status === 'em_uso')
@@ -268,76 +306,60 @@ function Transferencias() {
                 </select>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Tipo de Origem</label>
-                  <select
-                    value={formData.origem_tipo}
-                    onChange={(e) => setFormData({ ...formData, origem_tipo: e.target.value })}
-                  >
-                    <option value="deposito">Depósito</option>
-                    <option value="evento">Evento</option>
-                    <option value="usuario">Usuário</option>
-                  </select>
-                </div>
+              {LADOS.map(({ lado, rotulo, obrigatorio }) => (
+                <div className="form-row" key={lado}>
+                  <div className="form-group">
+                    <label htmlFor={`transf-${lado}-tipo`}>{rotulo}: tipo{obrigatorio && ' *'}</label>
+                    {/* Trocar o tipo limpa o local escolhido: ids de tipos diferentes não se misturam */}
+                    <select id={`transf-${lado}-tipo`} {...campo(`${lado}_tipo`, { [`${lado}_id`]: '' })}>
+                      {Object.entries(TIPOS_LOCAL).map(([valor, nome]) => (
+                        <option key={valor} value={valor}>{nome}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="form-group">
-                  <label>ID Origem</label>
-                  <input
-                    type="number"
-                    value={formData.origem_id}
-                    onChange={(e) => setFormData({ ...formData, origem_id: e.target.value })}
-                    placeholder="Opcional"
-                  />
+                  <div className="form-group">
+                    <label htmlFor={`transf-${lado}-id`}>{rotulo}{obrigatorio && ' *'}</label>
+                    <select id={`transf-${lado}-id`} {...campo(`${lado}_id`)} required={obrigatorio}>
+                      <option value="">{obrigatorio ? 'Selecione...' : 'Não informar'}</option>
+                      {opcoesDoLocal[formData[`${lado}_tipo`]].map((local) => (
+                        <option key={local.id} value={local.id}>{local.nome}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              ))}
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Tipo de Destino *</label>
-                  <select
-                    value={formData.destino_tipo}
-                    onChange={(e) => setFormData({ ...formData, destino_tipo: e.target.value })}
-                    required
-                  >
-                    <option value="deposito">Depósito</option>
-                    <option value="evento">Evento</option>
-                    <option value="usuario">Usuário</option>
-                  </select>
-                </div>
+              <fieldset className="responsaveis">
+                <legend>Quem aprova cada etapa (opcional)</legend>
+                <small>Sem ninguém designado, qualquer pessoa do perfil da etapa pode aprovar.</small>
+                {RESPONSAVEIS.map(({ campo: nome, rotulo, perfis }) => (
+                  <div className="form-group" key={nome}>
+                    <label htmlFor={`transf-${nome}`}>{rotulo}</label>
+                    <select id={`transf-${nome}`} {...campo(nome)}>
+                      <option value="">Qualquer um do perfil</option>
+                      {referencias.pessoas
+                        .filter((p) => perfis.includes(p.tipo))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>{p.nome}</option>
+                        ))}
+                    </select>
+                  </div>
+                ))}
+              </fieldset>
 
-                <div className="form-group">
-                  <label>ID Destino *</label>
-                  <input
-                    type="number"
-                    value={formData.destino_id}
-                    onChange={(e) => setFormData({ ...formData, destino_id: e.target.value })}
-                    required
-                  />
-                </div>
+              <div className="form-group">
+                <label htmlFor="transf-motivo">Motivo</label>
+                <input id="transf-motivo" type="text" {...campo('motivo')} placeholder="Motivo da transferência..." />
               </div>
 
               <div className="form-group">
-                <label>Motivo</label>
-                <input
-                  type="text"
-                  value={formData.motivo}
-                  onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
-                  placeholder="Motivo da transferência..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Observações</label>
-                <textarea
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                  placeholder="Observações adicionais..."
-                />
+                <label htmlFor="transf-observacoes">Observações</label>
+                <textarea id="transf-observacoes" {...campo('observacoes')} placeholder="Observações adicionais..." />
               </div>
 
               <div className="form-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                <button type="button" className="btn btn-secondary" onClick={fecharModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">

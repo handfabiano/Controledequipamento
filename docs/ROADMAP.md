@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 67%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-19, após R-005 (F-06 Pronto).
+**Conclusão do sistema: 69%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-19, após R-010 (F-12 Pronto).
 
 ---
 
@@ -35,7 +35,7 @@ Sem estes itens o sistema não funciona em produção.
 
 | ID | Tarefa | Status | Prioridade | Esforço | Depende de | Critério de pronto |
 |---|---|---|---|---|---|---|
-| R-010 | Transferência: escolher origem/destino por nome (depósitos, eventos, usuários) e designar responsáveis | Pendente | Alto | M | R-002, R-004 | Nenhum campo de ID numérico na tela; fluxo completo (solicitar → 3 aprovações → concluída) executado no app |
+| R-010 | Transferência: escolher origem/destino por nome (depósitos, eventos, usuários) e designar responsáveis | Pronto (2026-10-19) | Alto | M | R-002, R-004 | Nenhum campo de ID numérico na tela; fluxo completo (solicitar → 3 aprovações → concluída) executado no app |
 | R-011 | Notificar perfis elegíveis quando a transferência não tem responsável designado | Pendente | Médio | P | — | Teste: criar sem designados notifica coordenadores |
 | R-012 | Detalhe do equipamento: histórico, problemas, resolver problema, editar, manutenção | Pendente | Alto | M | — | Cada ação da API F-07/F-08/F-10 acessível pela tela e exercitada no app |
 | R-013 | QR Code e etiqueta pela tela, com autenticação (buscar HTML com token) | Pendente | Médio | P | R-012 | Botão imprime etiqueta sem 401 |
@@ -61,6 +61,8 @@ Sem estes itens o sistema não funciona em produção.
 | R-039 | API e tela de coordenador para templates de evento e seus checklists (criar, editar) | Pendente | Médio | M | R-002 | Coordenador cria um template com checklist pela tela e o usa ao criar evento; não-coordenador recebe 403; testes de API |
 | R-040 | Nome único de depósito e de categoria garantido no banco (índice em `LOWER(nome)`), não só na checagem da API. Atenção: o `LOWER` do SQLite só converte letras ASCII (`LOWER('DEPÓSITO')` dá `depÓsito`), então a chave normalizada deve ser calculada em JS | Pendente | Baixo | P | R-008 | Dois cadastros simultâneos com o mesmo nome: um 201, outro 400 (teste) |
 | R-041 | Ids acima do `INTEGER` do Postgres dão 500 nas rotas antigas (ex.: `PUT /api/usuarios/99999999999/ativo`); usar `idValido` de `services/validacao.js` | Pendente | Baixo | P | — | Mesmas rotas respondem 400/404 em SQLite e Postgres (teste) |
+| R-043 | Designar responsável de entrega/recebimento só com o perfil da etapa ou coordenador: hoje a API aceita qualquer usuário ativo (ex.: um técnico), que passa a poder aprovar a etapa; a tela já filtra, mas só como UX | Pendente | Médio | P | — | `POST /transferencias` com técnico em `responsavel_entrega_id` dá 400 (teste) |
+| R-044 | Transferência de equipamento alocado em evento ativo com origem depósito (ou sem origem) é aceita, e a conclusão não devolve a alocação do evento, que depois "libera" um equipamento que já saiu. A API deveria exigir a origem evento (ou deduzi-la); a tela só deixou de sugerir o depósito para equipamento em uso | Pendente | Médio | P | — | Teste: equipamento alocado em evento + origem depósito dá 400 ou vira origem evento; a alocação fica devolvida ao concluir |
 | R-029 | Regra de quem pode solicitar transferência (hoje qualquer autenticado) | Pendente | Baixo | P | decisão do usuário | Regra registrada em DECISOES e testada |
 
 ## Fase 3 — Qualidade e pós-lançamento
@@ -82,6 +84,6 @@ Sem estes itens o sistema não funciona em produção.
 
 Fase 0 concluída, exceto R-007 (aguardando acesso à Vercel e ao banco de produção).
 
-1. **R-010** — transferência escolhendo origem e destino por nome e designando responsáveis (Fase 1, Alto, M, depende de R-002 e R-004, prontos).
-2. **R-012** — detalhe do equipamento (Fase 1, Alto, M).
-3. **R-014** — detalhe do evento (Fase 1, Alto, M, depende de R-004, pronto).
+1. **R-012** — detalhe do equipamento (Fase 1, Alto, M).
+2. **R-014** — detalhe do evento (Fase 1, Alto, M, depende de R-004, pronto).
+3. **R-043** e **R-044** — regras de transferência achadas no R-010 (Fase 2, Médio, P).

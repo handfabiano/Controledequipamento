@@ -5,6 +5,42 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-19 — R-010: transferência pelo nome, com responsáveis designados
+
+**O quê**
+- Nova transferência: origem e destino escolhidos em listas por nome (depósitos, eventos ainda
+  abertos, pessoas ativas), sem campo de ID. Ao escolher um equipamento disponível, a origem já
+  vem com o depósito onde ele está; para equipamento em uso, a origem fica para a pessoa escolher.
+  Um bloco opcional designa quem aprova cada etapa, filtrando pelas pessoas do perfil da etapa
+  (ou coordenador).
+- API: `GET /usuarios/ativos` (id, nome e perfil de quem está ativo, para qualquer autenticado);
+  lista e detalhe de transferências trazem `origem_nome`, `destino_nome` e `pode_aprovar` por
+  etapa, calculado pela mesma regra da aprovação (D-016). A tela mostra os botões a partir disso
+  em vez de repetir a regra.
+- Status de evento "aberto" num módulo só no client (`client/src/statusEvento.js`), usado em
+  Eventos e Transferências.
+
+**Por quê**
+- R-010: a tela pedia IDs numéricos digitados e não deixava designar responsáveis (F-12).
+
+**Verificado**
+- `npm test`: 152/152 em SQLite e em Postgres 16 local. Testes novos em
+  `transferencias.test.js`: lista de ativos (só id, nome, perfil; sem inativos; 401 sem token),
+  nomes de origem/destino na lista, `pode_aprovar` por usuário e etapa (inclusive designado,
+  depois da entrega, no detalhe e com a transferência cancelada).
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo): formulário sem campo numérico; origem
+  sugerida "Depósito Central"; destino "Galpão Leste" escolhido pelo nome; entrega designada a
+  João e recebimento a Maria. Ana aprovou como coordenadora, João viu só "Confirmar Entrega",
+  Maria confirmou o recebimento; status `concluida` e o equipamento passou a mostrar Galpão Leste.
+  Sem erros de JavaScript.
+- Revisões: simplify (regra de aprovação vinda do servidor, consultas de nomes montadas de uma
+  tabela, referências lidas à parte), code-review high (origem herdada de outro equipamento,
+  sugestão de depósito para equipamento em evento, listas desatualizadas: corrigidos; regras do
+  servidor viraram R-043 e R-044) e security-review sem achados.
+
+---
+
 ## 2026-10-19 — R-005: código automático pelo prefixo na tela
 
 **O quê**

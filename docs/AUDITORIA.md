@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-19 (após R-005)_
+_Última verificação: 2026-10-19 (após R-010)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **67%** | Inventário da seção 2: (10 Pronto + 0,5 × 12 Parcial) / 24 itens (F-06 Pronto após R-005) |
-| Testes do backend | 149/149 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-005); no CI desde o PR #22 |
+| Conclusão funcional | **69%** | Inventário da seção 2: (11 Pronto + 0,5 × 11 Parcial) / 24 itens (F-12 Pronto após R-010) |
+| Testes do backend | 152/152 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-010); no CI desde o PR #22 |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -47,6 +47,10 @@ SQLite e Postgres 16, inclusive sem a trava, quando o teste falha).
 **Atualização 2026-10-19 (R-005):** o cadastro de equipamento numera sozinho pelo prefixo
 (MIC → MIC0001, MIC0002...) ou aceita o código completo; com isso a Fase 0 do roadmap está
 feita, exceto verificar o deploy real (R-007).
+
+**Atualização 2026-10-19 (R-010):** a solicitação de transferência escolhe origem, destino e
+quem aprova cada etapa pelo nome; cada pessoa vê só os botões das etapas que o servidor deixa
+ela aprovar. Achados novos: R-043 e R-044.
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -102,7 +106,7 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-19 (após R-005)_
+_Última verificação: 2026-10-19 (após R-010)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
@@ -117,7 +121,7 @@ _Última verificação: 2026-10-19 (após R-005)_
 | F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |
 | F-10 | Resolver problema | Parcial | API pronta; `equipamentos.resolverProblema` não é usado no cliente |
 | F-11 | QR Code: leitura, geração e etiqueta | Parcial | Leitura pronta (`QRScanner.js`); geração/etiqueta só na API; `gerarEtiqueta` devolve URL que, aberta direto, não leva o token Bearer (inferido: 401) |
-| F-12 | Transferência com aprovação tripla | Parcial | API completa e testada; tela pede **IDs numéricos** de origem/destino (`Transferencias.js:285,310`) e não designa responsáveis |
+| F-12 | Transferência com aprovação tripla | Pronto | Origem, destino e responsáveis escolhidos pelo nome (`Transferencias.js`, `GET /usuarios/ativos`); a lista traz `origem_nome`, `destino_nome` e `pode_aprovar` calculado no servidor; testes em `transferencias.test.js`; fluxo solicitar → 3 aprovações → concluída executado no navegador (R-010). Regras a fechar: R-043, R-044 |
 | F-13 | Transferência rápida entre responsáveis (mesmo evento) | Parcial | API `POST /transferencias/rapida`; sem tela |
 | F-14 | Transferência entre eventos simultâneos | Parcial | API `POST /transferencias/entre-eventos`; sem tela |
 | F-15 | Criar/listar eventos | Parcial | Tela não envia responsáveis; não há edição de evento nem remoção de equipamento alocado |
@@ -174,19 +178,19 @@ _Última verificação: 2026-10-17 (após R-008)_
 
 ## 4. Backend / API
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-010)_
 
-40 rotas (contadas em 2026-10-17; a contagem anterior, 28, estava errada) em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
+41 rotas (contadas em 2026-10-19) em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
 confere a cada requisição que o usuário do token existe e está ativo, e usa o perfil do banco
 (R-023).
 
 | Grupo | Rotas | Autorização | Validação |
 |---|---|---|---|
 | Auth | login, register, me, senha | login público com rate limit; register aberto só no banco vazio (com `BOOTSTRAP_TOKEN` opcional); senha: o próprio usuário, com limite de tentativas por usuário | manual |
-| Usuários | 2 (listar, ativar/desativar) | coordenador; não altera a própria conta | manual (`inteiro`) |
+| Usuários | 3 (listar, ativar/desativar, ativos) | coordenador; não altera a própria conta. `GET /usuarios/ativos` (só id, nome e perfil, para escolher pessoas na transferência): autenticado | manual (`inteiro`) |
 | Depósitos e categorias | 6 (depósitos: listar, criar, editar; categorias: listar, criar, editar) | listar: autenticado; criar e editar: coordenador | manual (`services/validacao.js`, D-014) |
 | Equipamentos | 9 (sem a lista de categorias) | escrita: coordenador e responsáveis (`gestor`); reportar: qualquer autenticado | express-validator (`validators/equipamentoValidator.js`) |
-| Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento | manual (`inteiro`, `informado`) |
+| Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento; lista e detalhe dizem em `pode_aprovar` quais etapas o usuário pode aprovar (D-016) | manual (`inteiro`, `informado`) |
 | Eventos | 7 | criar: gestor; alocar: equipe do evento; status: coordenador (cancelar: criador também) | manual |
 | Notificações | 4 | só as do próprio usuário | — |
 | Dashboard | 1 | autenticado | — |
@@ -205,6 +209,10 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
   - `authLimiter` importado e não usado em `server/index.js:7`.
   - Ids acima do `INTEGER` do Postgres dão 500 nas rotas que usam `inteiro` (reproduzido em
     `PUT /api/usuarios/99999999999/ativo`, 2026-10-17). → R-041.
+  - O responsável designado de entrega/recebimento pode ser de qualquer perfil (lido em
+    `lerResponsaveis`, `transferenciasController.js:62`; só o coordenador é conferido). → R-043.
+  - Equipamento alocado em evento aceita transferência com origem depósito, e a conclusão não
+    devolve a alocação (`moverAlocacaoEmEventos` só olha `origem_tipo = 'evento'`). → R-044.
   - Nome único de depósito e categoria é checado só na API, não no banco. → R-040.
 - **Edge Functions**: não há.
 
@@ -212,7 +220,7 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
 
 ## 5. Frontend
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-010)_
 
 Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Cadastros (depósitos e
 categorias, só coordenador), Usuários (só coordenador) e Minha conta (troca de senha)
@@ -220,8 +228,7 @@ categorias, só coordenador), Usuários (só coordenador) e Minha conta (troca d
 
 - **Faltam telas**: templates e checklists, detalhe de equipamento,
   detalhe de evento, transferência rápida e entre eventos.
-- **UX quebrada**: transferência por ID numérico digitado;
-  erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
+- **UX quebrada**: erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
   genérica, mas a API exige 10+ caracteres); busca dispara requisição a cada tecla; feedback
   só por `alert()`; não há estado de erro na tela (dashboard falha em silêncio).
 - **Estado de sessão**: usuário restaurado do `localStorage` sem revalidar (`AuthContext.js:22`);
