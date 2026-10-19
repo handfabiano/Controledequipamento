@@ -180,7 +180,70 @@ test('manutenção é manual: problemas não a sobrescrevem', async () => {
 
   // Voltar a "disponivel" manualmente recalcula pelo estado real
   await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: { status: 'disponivel' } });
-  assert.strictEqual((await obter(id)).status, 'disponivel');
+  const liberado = await obter(id);
+  assert.strictEqual(liberado.status, 'disponivel');
+
+  // Entrar e sair da manutenção ficam no histórico do detalhe, com os dois status
+  const trocas = liberado.historico
+    .filter((h) => h.tipo_movimentacao === 'status')
+    .map((h) => `${h.origem} → ${h.destino}`);
+  assert.deepStrictEqual(trocas, ['manutencao → disponivel', 'disponivel → manutencao']);
+});
+
+test('editar pela tela: envia todos os campos do formulário de uma vez', async () => {
+  const id = await criarEquipamento({ marca: 'Marca X', modelo: 'M1', deposito_id: 1 });
+  // Como o formulário de edição envia: ids como texto e campos vazios como ''
+  const formulario = {
+    nome: 'Nome editado', categoria_id: '2', deposito_id: '2', marca: 'Marca Y', modelo: '',
+    numero_serie: 'SN-123', condicao: 'regular', observacoes: ''
+  };
+  const r = await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: formulario });
+  assert.strictEqual(r.status, 200, r.text);
+
+  const eq = await obter(id);
+  assert.strictEqual(eq.nome, 'Nome editado');
+  assert.strictEqual(eq.categoria_id, 2);
+  assert.strictEqual(eq.deposito_id, 2);
+  assert.strictEqual(eq.marca, 'Marca Y');
+  assert.ok(!eq.modelo, 'modelo deveria ter sido limpo');
+  assert.strictEqual(eq.numero_serie, 'SN-123');
+  assert.strictEqual(eq.condicao, 'regular');
+  assert.strictEqual(eq.status, 'disponivel');
+  assert.strictEqual(eq.historico[0].observacoes,
+    'Alterado: nome, categoria, depósito, marca, modelo, número de série, condição');
+
+  // Salvar o mesmo formulário de novo não muda nada nem enche o histórico
+  assert.strictEqual((await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: formulario })).status, 200);
+  assert.strictEqual((await obter(id)).historico.length, eq.historico.length);
+});
+
+test('manutenção e troca de depósito respeitam transferência em andamento', async () => {
+  const id = await criarEquipamento({ deposito_id: 1 });
+  const transferencia = await srv.req('POST', '/api/transferencias', {
+    token: t.coordenador,
+    body: { equipamento_id: id, origem_tipo: 'deposito', destino_tipo: 'deposito', destino_id: 2 }
+  });
+  assert.strictEqual(transferencia.status, 201, transferencia.text);
+
+  const manutencao = await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: { status: 'manutencao' } });
+  assert.strictEqual(manutencao.status, 400);
+  const deposito = await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: { deposito_id: 2 } });
+  assert.strictEqual(deposito.status, 400);
+  // O mesmo depósito (como a tela envia ao editar só o nome) continua aceito
+  const mesmo = await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.coordenador, body: { nome: 'Renomeado', deposito_id: '1' } });
+  assert.strictEqual(mesmo.status, 200, mesmo.text);
+  assert.strictEqual((await obter(id)).status, 'transferencia');
+});
+
+test('técnico reporta problema, mas não edita, não põe em manutenção nem resolve', async () => {
+  const id = await criarEquipamento();
+  const problema = await reportar(id, 'baixa');
+  assert.strictEqual(problema.status, 201);
+
+  const editar = await srv.req('PUT', `/api/equipamentos/${id}`, { token: t.tecnico, body: { status: 'manutencao' } });
+  assert.strictEqual(editar.status, 403);
+  const resolverComoTecnico = await srv.req('PUT', `/api/equipamentos/${id}/problemas/${problema.body.id}/resolver`, { token: t.tecnico });
+  assert.strictEqual(resolverComoTecnico.status, 403);
 });
 
 test('atualizar: status controlados pelo sistema não podem ser forçados', async () => {

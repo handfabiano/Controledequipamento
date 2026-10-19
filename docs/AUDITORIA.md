@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-19 (após R-010)_
+_Última verificação: 2026-10-19 (após R-012)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **69%** | Inventário da seção 2: (11 Pronto + 0,5 × 11 Parcial) / 24 itens (F-12 Pronto após R-010) |
-| Testes do backend | 152/152 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-010); no CI desde o PR #22 |
+| Conclusão funcional | **75%** | Inventário da seção 2: (14 Pronto + 0,5 × 8 Parcial) / 24 itens (F-07, F-08 e F-10 Pronto após R-012) |
+| Testes do backend | 155/155 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-012); no CI desde o PR #22 |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -51,6 +51,10 @@ feita, exceto verificar o deploy real (R-007).
 **Atualização 2026-10-19 (R-010):** a solicitação de transferência escolhe origem, destino e
 quem aprova cada etapa pelo nome; cada pessoa vê só os botões das etapas que o servidor deixa
 ela aprovar. Achados novos: R-043 e R-044.
+
+**Atualização 2026-10-19 (R-012):** cada equipamento tem uma tela de detalhe com dados,
+problemas (resolver) e histórico; gestores editam e põem em manutenção por ela. Achados
+novos: R-045 a R-048.
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -106,7 +110,7 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-19 (após R-010)_
+_Última verificação: 2026-10-19 (após R-012)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
@@ -116,10 +120,10 @@ _Última verificação: 2026-10-19 (após R-010)_
 | F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); depósitos e categorias: API e tela Cadastros (`cadastrosController.js`, `Cadastros.js`, testes em `cadastros.test.js`, R-002); templates e checklists sem edição (R-039) |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
 | F-06 | Cadastrar equipamento | Pronto | Depósito escolhido numa lista (R-002); código automático pelo prefixo ou código completo, em maiúsculas ou não (R-005); testes em `equipamentos.test.js`; verificado no navegador |
-| F-07 | Editar equipamento / colocar em manutenção | Parcial | API `PUT /equipamentos/:id` pronta; sem tela (`equipamentos.atualizar` não é usado) |
-| F-08 | Detalhe do equipamento (histórico, problemas) | Parcial | API `GET /equipamentos/:id` pronta; sem tela |
-| F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |
-| F-10 | Resolver problema | Parcial | API pronta; `equipamentos.resolverProblema` não é usado no cliente |
+| F-07 | Editar equipamento / colocar em manutenção | Pronto | Botões Editar e Colocar em/Liberar da manutenção em `EquipamentoDetalhe.js` (gestor); a API recusa manutenção em evento ou transferência e troca de depósito em transferência (D-017); testes em `equipamentos.test.js`; verificado no navegador (R-012) |
+| F-08 | Detalhe do equipamento (histórico, problemas) | Pronto | Tela `/equipamentos/:id` (`EquipamentoDetalhe.js`), aberta pelo código ou por Detalhes na lista; histórico ainda mostra IDs em movimentações antigas (R-045) e não tem as mudanças automáticas de status (R-046) |
+| F-09 | Reportar problema | Pronto | `ReportarProblemaModal.js`, na lista e no detalhe; mostra o motivo do erro da API (R-012) |
+| F-10 | Resolver problema | Pronto | Botão Resolver na lista de problemas do detalhe (gestor); verificado no navegador (R-012) |
 | F-11 | QR Code: leitura, geração e etiqueta | Parcial | Leitura pronta (`QRScanner.js`); geração/etiqueta só na API; `gerarEtiqueta` devolve URL que, aberta direto, não leva o token Bearer (inferido: 401) |
 | F-12 | Transferência com aprovação tripla | Pronto | Origem, destino e responsáveis escolhidos pelo nome (`Transferencias.js`, `GET /usuarios/ativos`); a lista traz `origem_nome`, `destino_nome` e `pode_aprovar` calculado no servidor; testes em `transferencias.test.js`; fluxo solicitar → 3 aprovações → concluída executado no navegador (R-010). Regras a fechar: R-043, R-044 |
 | F-13 | Transferência rápida entre responsáveis (mesmo evento) | Parcial | API `POST /transferencias/rapida`; sem tela |
@@ -135,8 +139,8 @@ _Última verificação: 2026-10-19 (após R-010)_
 | F-23 | Deploy de produção funcionando | Bloqueado | Sem acesso à Vercel/banco de produção para verificar |
 | F-24 | Migrations de schema | Pronto | `server/database/migracoes.js` aplica `migracoes/NNN_*.sql` uma vez, sob trava entre instâncias (R-008, testes em `migracoes.test.js`) |
 
-Funcionalidades "de fachada" (API pronta, sem uso na tela): F-07, F-08, F-10, F-11
-(geração), F-13, F-14, F-19, além de `transferencias.buscarPorId`.
+Funcionalidades "de fachada" (API pronta, sem uso na tela): F-11 (geração), F-13, F-14,
+F-19, além de `transferencias.buscarPorId`.
 
 ---
 
@@ -220,16 +224,15 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
 
 ## 5. Frontend
 
-_Última verificação: 2026-10-19 (após R-010)_
+_Última verificação: 2026-10-19 (após R-012)_
 
-Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Cadastros (depósitos e
+Telas: Login, Dashboard, Equipamentos (lista e detalhe), Transferências, Eventos, Cadastros (depósitos e
 categorias, só coordenador), Usuários (só coordenador) e Minha conta (troca de senha)
 (`client/src/App.js`).
 
-- **Faltam telas**: templates e checklists, detalhe de equipamento,
+- **Faltam telas**: templates e checklists,
   detalhe de evento, transferência rápida e entre eventos.
-- **UX quebrada**: erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
-  genérica, mas a API exige 10+ caracteres); busca dispara requisição a cada tecla; feedback
+- **UX quebrada**: busca dispara requisição a cada tecla; feedback
   só por `alert()`; não há estado de erro na tela (dashboard falha em silêncio).
 - **Estado de sessão**: usuário restaurado do `localStorage` sem revalidar (`AuthContext.js:22`);
   401 leva ao login.

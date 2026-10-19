@@ -5,6 +5,48 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-19 — R-012: detalhe do equipamento
+
+**O quê**
+- Tela `/equipamentos/:id`, aberta pelo código ou pelo botão Detalhes na lista: dados do
+  equipamento, status e condição, problemas (com Resolver para gestores) e as últimas 20
+  movimentações. Gestores editam (só os campos alterados são enviados) e colocam ou tiram da
+  manutenção; todos podem reportar problema.
+- Componentes comuns: `CamposEquipamento` (cadastro e edição), `ReportarProblemaModal` (lista e
+  detalhe; agora mostra o motivo do erro da API) e as tabelas de rótulos em
+  `client/src/equipamento.js`. `dataHora` (`client/src/formatacao.js`) lê as datas UTC do SQLite
+  como UTC. Estilos comuns (`.page-header`, `.form-row`, `.form-actions`, `.empty-state`) foram
+  para `index.css`.
+- API (D-017): manutenção recusada para equipamento em evento ou em transferência; troca de
+  depósito recusada durante transferência; histórico com linha `status` (anterior → novo) e
+  "Alterado: campos" em vez de uma frase fixa a cada PUT; listas por data desempatadas por `id`
+  (antes, no SQLite, registros do mesmo segundo vinham em ordem trocada).
+
+**Por quê**
+- R-012: editar, ver histórico, resolver problema e manutenção só existiam na API (F-07, F-08,
+  F-10).
+
+**Verificado**
+- `npm test`: 155/155 em SQLite e em Postgres 16 local. Testes novos em `equipamentos.test.js`:
+  entrada e saída da manutenção no histórico, edição com o formulário completo (e salvar de novo
+  não registra nada), manutenção e troca de depósito recusadas em transferência (falha sem a
+  mudança), técnico recebe 403 ao editar e ao resolver. O teste de ordem do histórico falhava
+  antes do desempate por `id`.
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo): coordenadora abriu o detalhe pela
+  lista, reportou problema alto (status Com problema, condição Ruim), resolveu (Disponível, Bom),
+  colocou e tirou da manutenção, editou marca, modelo e depósito; histórico mostrou
+  "Disponível → Manutenção", "Manutenção → Disponível" e "Alterado: depósito, marca, modelo".
+  Técnico viu só "Reportar Problema" e o problema dele "Em aberto". Id inexistente mostra
+  "Equipamento não encontrado". O cadastro pela lista continua gerando códigos (roteiro do
+  R-005). Sem erros de JavaScript.
+- Revisões: simplify (campos e rótulos compartilhados, histórico estruturado, consultas em
+  paralelo), code-review high (edição desfazendo mudanças de outros, manutenção em transferência,
+  depósito trocado em transferência, fuso das datas, estilos de outras telas: corrigidos; histórico
+  incompleto e com IDs virou R-045 e R-046) e security-review sem achados.
+
+---
+
 ## 2026-10-19 — R-010: transferência pelo nome, com responsáveis designados
 
 **O quê**

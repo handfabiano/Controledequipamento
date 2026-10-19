@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Equipamentos from './pages/Equipamentos';
+import EquipamentoDetalhe from './pages/EquipamentoDetalhe';
 import Transferencias from './pages/Transferencias';
 import Eventos from './pages/Eventos';
 import Usuarios from './pages/Usuarios';
@@ -42,6 +43,7 @@ function AppRoutes() {
         >
           <Route index element={<Dashboard />} />
           <Route path="equipamentos" element={<Equipamentos />} />
+          <Route path="equipamentos/:id" element={<EquipamentoDetalhe />} />
           <Route path="transferencias" element={<Transferencias />} />
           <Route path="eventos" element={<Eventos />} />
           <Route path="usuarios" element={<SoCoordenador><Usuarios /></SoCoordenador>} />

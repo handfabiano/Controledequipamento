@@ -5,7 +5,8 @@ const {
   GRAVIDADES_GRAVES,
   calcularStatus,
   recalcularStatus,
-  temProblemaGrave
+  temProblemaGrave,
+  temTransferenciaAtiva
 } = require('../services/equipamentoStatus');
 const { registrarMovimentacao } = require('../services/historico');
 
@@ -19,6 +20,18 @@ const escapeHtml = (valor) =>
 
 // Campos opcionais de texto podem ser limpos enviando string vazia
 const textoOpcional = (novo, atual) => (novo !== undefined ? (novo === '' ? null : novo) : atual);
+
+// Campos editáveis e como aparecem no histórico ("Alterado: marca, depósito")
+const ROTULOS_CAMPOS = {
+  nome: 'nome',
+  categoria_id: 'categoria',
+  deposito_id: 'depósito',
+  marca: 'marca',
+  modelo: 'modelo',
+  numero_serie: 'número de série',
+  condicao: 'condição',
+  observacoes: 'observações'
+};
 
 // Confere se categoria e depósito informados existem; devolve a mensagem de erro ou null
 async function erroDeReferencias({ categoria_id, deposito_id }) {
@@ -113,7 +126,7 @@ const equipamentosController = {
         const problemas = await allAsync(
           `SELECT * FROM problemas_equipamentos
            WHERE equipamento_id IN (${placeholders(ids)}) AND resolvido = 0
-           ORDER BY data_relato DESC`,
+           ORDER BY data_relato DESC, id DESC`,
           ids
         );
 
@@ -167,17 +180,18 @@ const equipamentosController = {
         return res.status(404).json({ error: 'Equipamento não encontrado' });
       }
 
-      // Buscar problemas
-      const problemas = await allAsync(
-        'SELECT p.*, u.nome as reportado_por_nome FROM problemas_equipamentos p LEFT JOIN usuarios u ON p.reportado_por = u.id WHERE p.equipamento_id = ? ORDER BY p.data_relato DESC',
-        [id]
-      );
-
-      // Buscar histórico
-      const historico = await allAsync(
-        'SELECT h.*, u.nome as usuario_nome FROM historico_movimentacoes h LEFT JOIN usuarios u ON h.usuario_id = u.id WHERE h.equipamento_id = ? ORDER BY h.data_movimentacao DESC LIMIT 20',
-        [id]
-      );
+      // Problemas e histórico, mais recentes primeiro (o id desempata registros do mesmo
+      // segundo, comuns no SQLite)
+      const [problemas, historico] = await Promise.all([
+        allAsync(
+          'SELECT p.*, u.nome as reportado_por_nome FROM problemas_equipamentos p LEFT JOIN usuarios u ON p.reportado_por = u.id WHERE p.equipamento_id = ? ORDER BY p.data_relato DESC, p.id DESC',
+          [id]
+        ),
+        allAsync(
+          'SELECT h.*, u.nome as usuario_nome FROM historico_movimentacoes h LEFT JOIN usuarios u ON h.usuario_id = u.id WHERE h.equipamento_id = ? ORDER BY h.data_movimentacao DESC, h.id DESC LIMIT 20',
+          [id]
+        )
+      ]);
 
       equipamento.problemas = problemas;
       equipamento.historico = historico;
@@ -306,9 +320,38 @@ const equipamentosController = {
         return res.status(400).json({ error: erroReferencias });
       }
 
+      // Equipamento num evento ou em transferência está fora do depósito: entrar em
+      // manutenção esconderia isso (a manutenção não é sobrescrita pelo status derivado)
+      if (status === 'manutencao' && equipamento.status !== 'manutencao') {
+        const situacao = await calcularStatus(id);
+        if (['em_uso', 'transferencia'].includes(situacao)) {
+          return res.status(400).json({
+            error: 'Equipamento alocado em evento ou em transferência não pode entrar em manutenção; devolva-o antes'
+          });
+        }
+      }
+
+      // Em transferência, o depósito é o que a transferência vai mudar ao ser concluída
+      if (deposito_id !== undefined && Number(deposito_id) !== equipamento.deposito_id && await temTransferenciaAtiva(id)) {
+        return res.status(400).json({
+          error: 'Equipamento em transferência: o depósito muda quando a transferência for concluída'
+        });
+      }
+
       // "disponivel" manual significa "liberar": o status passa a refletir a situação real
       // (ex.: continua em_uso se estiver alocado em evento)
       const statusFinal = status === 'disponivel' ? await calcularStatus(id) : (status || equipamento.status);
+
+      const novo = {
+        nome: nome || equipamento.nome,
+        categoria_id: categoria_id ? Number(categoria_id) : equipamento.categoria_id,
+        marca: textoOpcional(marca, equipamento.marca),
+        modelo: textoOpcional(modelo, equipamento.modelo),
+        numero_serie: textoOpcional(numero_serie, equipamento.numero_serie),
+        deposito_id: deposito_id !== undefined ? Number(deposito_id) : equipamento.deposito_id,
+        condicao: condicao || equipamento.condicao,
+        observacoes: textoOpcional(observacoes, equipamento.observacoes)
+      };
 
       await runAsync(
         `UPDATE equipamentos
@@ -316,25 +359,32 @@ const equipamentosController = {
              deposito_id = ?, status = ?, condicao = ?, observacoes = ?,
              atualizado_em = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [nome || equipamento.nome,
-         categoria_id || equipamento.categoria_id,
-         textoOpcional(marca, equipamento.marca),
-         textoOpcional(modelo, equipamento.modelo),
-         textoOpcional(numero_serie, equipamento.numero_serie),
-         deposito_id !== undefined ? deposito_id : equipamento.deposito_id,
-         statusFinal,
-         condicao || equipamento.condicao,
-         textoOpcional(observacoes, equipamento.observacoes),
-         id]
+        [novo.nome, novo.categoria_id, novo.marca, novo.modelo, novo.numero_serie,
+         novo.deposito_id, statusFinal, novo.condicao, novo.observacoes, id]
       );
 
-      // Registrar alteração no histórico
-      await registrarMovimentacao({
-        equipamentoId: id,
-        tipo: 'atualizacao',
-        usuarioId: req.user.id,
-        observacoes: 'Dados do equipamento atualizados'
-      });
+      // Histórico: a troca de status (ex.: entrar ou sair da manutenção) com os dois valores,
+      // e quais campos mudaram. A tela de edição envia todos os campos: salvar sem mudar nada
+      // não registra nada.
+      if (statusFinal !== equipamento.status) {
+        await registrarMovimentacao({
+          equipamentoId: id,
+          tipo: 'status',
+          origem: equipamento.status,
+          destino: statusFinal,
+          usuarioId: req.user.id
+        });
+      }
+      const alterados = Object.keys(ROTULOS_CAMPOS)
+        .filter((campo) => String(novo[campo] ?? '') !== String(equipamento[campo] ?? ''));
+      if (alterados.length > 0) {
+        await registrarMovimentacao({
+          equipamentoId: id,
+          tipo: 'atualizacao',
+          usuarioId: req.user.id,
+          observacoes: `Alterado: ${alterados.map((campo) => ROTULOS_CAMPOS[campo]).join(', ')}`
+        });
+      }
 
       res.json({ message: 'Equipamento atualizado com sucesso' });
     } catch (error) {
@@ -444,7 +494,7 @@ const equipamentosController = {
 
       // Buscar problemas ativos
       const problemas = await allAsync(
-        'SELECT * FROM problemas_equipamentos WHERE equipamento_id = ? AND resolvido = 0 ORDER BY data_relato DESC',
+        'SELECT * FROM problemas_equipamentos WHERE equipamento_id = ? AND resolvido = 0 ORDER BY data_relato DESC, id DESC',
         [equipamento.id]
       );
 

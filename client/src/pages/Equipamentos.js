@@ -1,21 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { equipamentos, depositos, mensagemDeErro } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import QRScanner from '../components/QRScanner';
+import CamposEquipamento, { CAMPOS_VAZIOS } from '../components/CamposEquipamento';
+import ReportarProblemaModal from '../components/ReportarProblemaModal';
+import { STATUS_EQUIPAMENTO, CONDICOES, Badge, Opcoes } from '../equipamento';
 import './Equipamentos.css';
 
-const FORM_VAZIO = {
-  codigo: '',
-  nome: '',
-  categoria_id: '',
-  marca: '',
-  modelo: '',
-  numero_serie: '',
-  deposito_id: '',
-  condicao: 'bom',
-  observacoes: '',
-};
+const FORM_VAZIO = { codigo: '', ...CAMPOS_VAZIOS };
 
 // Como o campo de código se comporta em cada modo; `campo` é o nome enviado à API, que
 // converte para maiúsculas (na tela, só o CSS mostra em maiúsculas)
@@ -37,9 +31,9 @@ function Equipamentos() {
   const [listaDepositos, setListaDepositos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [showProblemaModal, setShowProblemaModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [selectedEquipamento, setSelectedEquipamento] = useState(null);
+  // Equipamento cujo problema está sendo reportado (null = formulário fechado)
+  const [problemaDe, setProblemaDe] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -58,11 +52,6 @@ function Equipamentos() {
   // Com o código automático, o campo de código guarda só o prefixo (MIC → MIC0001, MIC0002...)
   const [codigoAutomatico, setCodigoAutomatico] = useState(true);
   const formatoCodigo = FORMATO_CODIGO[codigoAutomatico ? 'automatico' : 'manual'];
-
-  const [problemaData, setProblemaData] = useState({
-    descricao: '',
-    gravidade: 'media',
-  });
 
   const loadData = useCallback(async () => {
     try {
@@ -152,48 +141,11 @@ function Equipamentos() {
     }
   };
 
-  const handleReportarProblema = async (e) => {
-    e.preventDefault();
-
-    try {
-      await equipamentos.reportarProblema(selectedEquipamento.id, problemaData);
-      alert('Problema reportado com sucesso!');
-      setShowProblemaModal(false);
-      setProblemaData({ descricao: '', gravidade: 'media' });
-      loadData();
-    } catch (error) {
-      console.error('Erro ao reportar problema:', error);
-      alert('Erro ao reportar problema');
-    }
-  };
-
   // Fechar, por qualquer caminho, descarta o que foi digitado e volta ao código automático
   const fecharModal = () => {
     setShowModal(false);
     setFormData(FORM_VAZIO);
     setCodigoAutomatico(true);
-  };
-
-  const getStatusBadge = (status) => {
-    const badges = {
-      disponivel: 'badge-success',
-      em_uso: 'badge-warning',
-      manutencao: 'badge-secondary',
-      com_problema: 'badge-danger',
-      transferencia: 'badge-info',
-    };
-    return badges[status] || 'badge-secondary';
-  };
-
-  const getCondicaoBadge = (condicao) => {
-    const badges = {
-      excelente: 'badge-success',
-      bom: 'badge-success',
-      regular: 'badge-warning',
-      ruim: 'badge-danger',
-      quebrado: 'badge-danger',
-    };
-    return badges[condicao] || 'badge-secondary';
   };
 
   if (loading && equipamentosList.length === 0) {
@@ -235,11 +187,7 @@ function Equipamentos() {
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             >
               <option value="">Todos</option>
-              <option value="disponivel">Disponível</option>
-              <option value="em_uso">Em Uso</option>
-              <option value="manutencao">Manutenção</option>
-              <option value="com_problema">Com Problema</option>
-              <option value="transferencia">Em Transferência</option>
+              <Opcoes tabela={STATUS_EQUIPAMENTO} />
             </select>
           </div>
 
@@ -277,21 +225,17 @@ function Equipamentos() {
           <tbody>
             {equipamentosList.map((eq) => (
               <tr key={eq.id}>
-                <td><strong>{eq.codigo}</strong></td>
+                <td><Link to={`/equipamentos/${eq.id}`}><strong>{eq.codigo}</strong></Link></td>
                 <td>{eq.nome}</td>
                 <td>
                   <span className="badge badge-secondary">{eq.categoria_nome}</span>
                 </td>
                 <td>{eq.marca} {eq.modelo}</td>
                 <td>
-                  <span className={`badge ${getStatusBadge(eq.status)}`}>
-                    {eq.status.replace('_', ' ')}
-                  </span>
+                  <Badge tabela={STATUS_EQUIPAMENTO} valor={eq.status} />
                 </td>
                 <td>
-                  <span className={`badge ${getCondicaoBadge(eq.condicao)}`}>
-                    {eq.condicao}
-                  </span>
+                  <Badge tabela={CONDICOES} valor={eq.condicao} />
                   {eq.problemas_ativos && eq.problemas_ativos.length > 0 && (
                     <span className="problema-indicator" title={eq.problemas_ativos[0].descricao}>
                       ⚠️
@@ -300,15 +244,14 @@ function Equipamentos() {
                 </td>
                 <td>{eq.deposito_nome || '-'}</td>
                 <td>
-                  <button
-                    className="btn btn-sm btn-warning"
-                    onClick={() => {
-                      setSelectedEquipamento(eq);
-                      setShowProblemaModal(true);
-                    }}
-                  >
-                    Reportar Problema
-                  </button>
+                  <div className="action-buttons">
+                    <Link className="btn btn-sm btn-secondary" to={`/equipamentos/${eq.id}`}>
+                      Detalhes
+                    </Link>
+                    <button className="btn btn-sm btn-warning" onClick={() => setProblemaDe(eq)}>
+                      Reportar Problema
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -365,127 +308,41 @@ function Equipamentos() {
             </div>
 
             <form onSubmit={handleSubmit}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="equipamento-codigo">{formatoCodigo.rotulo}</label>
-                  <input
-                    id="equipamento-codigo"
-                    type="text"
-                    value={formData.codigo}
-                    className="maiusculas"
-                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                    maxLength={formatoCodigo.maxLength}
-                    pattern={formatoCodigo.pattern}
-                    title={formatoCodigo.title}
-                    placeholder={formatoCodigo.placeholder}
-                    required
-                  />
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={codigoAutomatico}
-                      onChange={(e) => {
-                        setCodigoAutomatico(e.target.checked);
-                        setFormData({ ...formData, codigo: '' });
-                      }}
-                    />
-                    Numerar automaticamente
-                  </label>
-                  <small>{formatoCodigo.dica}</small>
-                </div>
-
-                <div className="form-group">
-                  <label>Nome *</label>
-                  <input
-                    type="text"
-                    value={formData.nome}
-                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
               <div className="form-group">
-                <label>Categoria *</label>
-                <select
-                  value={formData.categoria_id}
-                  onChange={(e) => setFormData({ ...formData, categoria_id: e.target.value })}
-                  required
-                >
-                  <option value="">Selecione...</option>
-                  {categorias.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.nome} ({cat.tipo})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Depósito *</label>
-                <select
-                  value={formData.deposito_id}
-                  onChange={(e) => setFormData({ ...formData, deposito_id: e.target.value })}
-                  required
-                >
-                  <option value="">Selecione...</option>
-                  {listaDepositos.map((dep) => (
-                    <option key={dep.id} value={dep.id}>
-                      {dep.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Marca</label>
-                  <input
-                    type="text"
-                    value={formData.marca}
-                    onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Modelo</label>
-                  <input
-                    type="text"
-                    value={formData.modelo}
-                    onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Número de Série</label>
+                <label htmlFor="equipamento-codigo">{formatoCodigo.rotulo}</label>
                 <input
+                  id="equipamento-codigo"
                   type="text"
-                  value={formData.numero_serie}
-                  onChange={(e) => setFormData({ ...formData, numero_serie: e.target.value })}
+                  value={formData.codigo}
+                  className="maiusculas"
+                  onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                  maxLength={formatoCodigo.maxLength}
+                  pattern={formatoCodigo.pattern}
+                  title={formatoCodigo.title}
+                  placeholder={formatoCodigo.placeholder}
+                  required
                 />
+                <label className="checkbox-inline">
+                  <input
+                    type="checkbox"
+                    checked={codigoAutomatico}
+                    onChange={(e) => {
+                      setCodigoAutomatico(e.target.checked);
+                      setFormData({ ...formData, codigo: '' });
+                    }}
+                  />
+                  Numerar automaticamente
+                </label>
+                <small>{formatoCodigo.dica}</small>
               </div>
 
-              <div className="form-group">
-                <label>Condição</label>
-                <select
-                  value={formData.condicao}
-                  onChange={(e) => setFormData({ ...formData, condicao: e.target.value })}
-                >
-                  <option value="excelente">Excelente</option>
-                  <option value="bom">Bom</option>
-                  <option value="regular">Regular</option>
-                  <option value="ruim">Ruim</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Observações</label>
-                <textarea
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                />
-              </div>
+              <CamposEquipamento
+                dados={formData}
+                onChange={setFormData}
+                categorias={categorias}
+                depositos={listaDepositos}
+                prefixoId="novo"
+              />
 
               <div className="form-actions">
                 <button type="button" className="btn btn-secondary" onClick={fecharModal}>
@@ -500,57 +357,15 @@ function Equipamentos() {
         </div>
       )}
 
-      {/* Modal de Reportar Problema */}
-      {showProblemaModal && (
-        <div className="modal-overlay" onClick={() => setShowProblemaModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Reportar Problema</h2>
-              <button className="close-btn" onClick={() => setShowProblemaModal(false)}>×</button>
-            </div>
-
-            {selectedEquipamento && (
-              <div className="equipamento-info">
-                <strong>{selectedEquipamento.codigo}</strong> - {selectedEquipamento.nome}
-              </div>
-            )}
-
-            <form onSubmit={handleReportarProblema}>
-              <div className="form-group">
-                <label>Gravidade *</label>
-                <select
-                  value={problemaData.gravidade}
-                  onChange={(e) => setProblemaData({ ...problemaData, gravidade: e.target.value })}
-                  required
-                >
-                  <option value="baixa">Baixa</option>
-                  <option value="media">Média</option>
-                  <option value="alta">Alta</option>
-                  <option value="critica">Crítica</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Descrição do Problema *</label>
-                <textarea
-                  value={problemaData.descricao}
-                  onChange={(e) => setProblemaData({ ...problemaData, descricao: e.target.value })}
-                  placeholder="Descreva o problema encontrado..."
-                  required
-                />
-              </div>
-
-              <div className="form-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowProblemaModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-danger">
-                  Reportar Problema
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {problemaDe && (
+        <ReportarProblemaModal
+          equipamento={problemaDe}
+          onClose={() => setProblemaDe(null)}
+          onReportado={() => {
+            setProblemaDe(null);
+            loadData();
+          }}
+        />
       )}
     </div>
   );
