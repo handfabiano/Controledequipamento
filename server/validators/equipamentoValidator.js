@@ -53,13 +53,16 @@ const criarEquipamento = [
   body('categoria_id')
     .isInt({ min: 1 }).withMessage('Categoria inválida'),
 
+  // mic0001 e " MIC " valem como MIC0001 e MIC: o controller recebe o valor já normalizado
   body('codigo')
     .optional()
+    .trim().toUpperCase()
     .matches(/^[A-Z]{3}\d{4}$/).withMessage('Código deve estar no formato XXX0000 (ex: MIC0001)'),
 
   body('prefixo')
     .optional()
-    .matches(/^[A-Z]{3}$/).withMessage('Prefixo deve ter 3 letras maiúsculas (ex: MIC)'),
+    .trim().toUpperCase()
+    .matches(/^[A-Z]{3}$/).withMessage('Prefixo deve ter 3 letras (ex: MIC)'),
 
   body('marca')
     .optional()

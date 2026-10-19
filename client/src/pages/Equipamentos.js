@@ -1,9 +1,34 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { equipamentos, depositos } from '../services/api';
+import { equipamentos, depositos, mensagemDeErro } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import QRScanner from '../components/QRScanner';
 import './Equipamentos.css';
+
+const FORM_VAZIO = {
+  codigo: '',
+  nome: '',
+  categoria_id: '',
+  marca: '',
+  modelo: '',
+  numero_serie: '',
+  deposito_id: '',
+  condicao: 'bom',
+  observacoes: '',
+};
+
+// Como o campo de código se comporta em cada modo; `campo` é o nome enviado à API, que
+// converte para maiúsculas (na tela, só o CSS mostra em maiúsculas)
+const FORMATO_CODIGO = {
+  automatico: {
+    campo: 'prefixo', rotulo: 'Prefixo *', maxLength: 3, pattern: '[A-Za-z]{3}', placeholder: 'MIC',
+    title: '3 letras, ex.: MIC', dica: 'O sistema numera em sequência: MIC0001, MIC0002...',
+  },
+  manual: {
+    campo: 'codigo', rotulo: 'Código *', maxLength: 7, pattern: '[A-Za-z]{3}[0-9]{4}', placeholder: 'MIC0001',
+    title: '3 letras e 4 números, ex.: MIC0001', dica: 'Formato XXX0000, ex.: MIC0001',
+  },
+};
 
 function Equipamentos() {
   const { isGestor } = useAuth();
@@ -29,17 +54,10 @@ function Equipamentos() {
     search: '',
   });
 
-  const [formData, setFormData] = useState({
-    codigo: '',
-    nome: '',
-    categoria_id: '',
-    marca: '',
-    modelo: '',
-    numero_serie: '',
-    deposito_id: '',
-    condicao: 'bom',
-    observacoes: '',
-  });
+  const [formData, setFormData] = useState(FORM_VAZIO);
+  // Com o código automático, o campo de código guarda só o prefixo (MIC → MIC0001, MIC0002...)
+  const [codigoAutomatico, setCodigoAutomatico] = useState(true);
+  const formatoCodigo = FORMATO_CODIGO[codigoAutomatico ? 'automatico' : 'manual'];
 
   const [problemaData, setProblemaData] = useState({
     descricao: '',
@@ -122,15 +140,15 @@ function Equipamentos() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const { codigo, ...dados } = formData;
     try {
-      await equipamentos.criar(formData);
-      alert('Equipamento criado com sucesso!');
-      setShowModal(false);
-      resetForm();
+      const { data } = await equipamentos.criar({ ...dados, [formatoCodigo.campo]: codigo });
+      alert(`Equipamento ${data.codigo} criado com sucesso!`);
+      fecharModal();
       loadData();
     } catch (error) {
       console.error('Erro ao criar equipamento:', error);
-      alert(error.response?.data?.error || 'Erro ao criar equipamento');
+      alert(mensagemDeErro(error, 'Erro ao criar equipamento'));
     }
   };
 
@@ -149,18 +167,11 @@ function Equipamentos() {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      codigo: '',
-      nome: '',
-      categoria_id: '',
-      marca: '',
-      modelo: '',
-      numero_serie: '',
-      deposito_id: '',
-      condicao: 'bom',
-      observacoes: '',
-    });
+  // Fechar, por qualquer caminho, descarta o que foi digitado e volta ao código automático
+  const fecharModal = () => {
+    setShowModal(false);
+    setFormData(FORM_VAZIO);
+    setCodigoAutomatico(true);
   };
 
   const getStatusBadge = (status) => {
@@ -346,23 +357,41 @@ function Equipamentos() {
 
       {/* Modal de Novo Equipamento */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={fecharModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Novo Equipamento</h2>
-              <button className="close-btn" onClick={() => setShowModal(false)}>×</button>
+              <button className="close-btn" onClick={fecharModal}>×</button>
             </div>
 
             <form onSubmit={handleSubmit}>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Código *</label>
+                  <label htmlFor="equipamento-codigo">{formatoCodigo.rotulo}</label>
                   <input
+                    id="equipamento-codigo"
                     type="text"
                     value={formData.codigo}
+                    className="maiusculas"
                     onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                    maxLength={formatoCodigo.maxLength}
+                    pattern={formatoCodigo.pattern}
+                    title={formatoCodigo.title}
+                    placeholder={formatoCodigo.placeholder}
                     required
                   />
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={codigoAutomatico}
+                      onChange={(e) => {
+                        setCodigoAutomatico(e.target.checked);
+                        setFormData({ ...formData, codigo: '' });
+                      }}
+                    />
+                    Numerar automaticamente
+                  </label>
+                  <small>{formatoCodigo.dica}</small>
                 </div>
 
                 <div className="form-group">
@@ -459,7 +488,7 @@ function Equipamentos() {
               </div>
 
               <div className="form-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                <button type="button" className="btn btn-secondary" onClick={fecharModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">

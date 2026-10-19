@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-18 (após R-002 e R-008)_
+_Última verificação: 2026-10-19 (após R-005)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **65%** | Inventário da seção 2: (9 Pronto + 0,5 × 13 Parcial) / 24 itens (F-24 Pronto após R-008; R-002 avançou F-04 e F-06, que seguem parciais) |
-| Testes do backend | 148/148 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-18, R-002 sobre o `main` com R-008); no CI desde o PR #22 |
+| Conclusão funcional | **67%** | Inventário da seção 2: (10 Pronto + 0,5 × 12 Parcial) / 24 itens (F-06 Pronto após R-005) |
+| Testes do backend | 149/149 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-005); no CI desde o PR #22 |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -43,6 +43,10 @@ Cadastros, e o cadastro de equipamento escolhe o depósito numa lista em vez de 
 **Atualização 2026-10-17 (R-008):** o schema passou a ter migrações versionadas, aplicadas uma
 vez cada; cold starts simultâneos em banco vazio não duplicam mais o catálogo (verificado em
 SQLite e Postgres 16, inclusive sem a trava, quando o teste falha).
+
+**Atualização 2026-10-19 (R-005):** o cadastro de equipamento numera sozinho pelo prefixo
+(MIC → MIC0001, MIC0002...) ou aceita o código completo; com isso a Fase 0 do roadmap está
+feita, exceto verificar o deploy real (R-007).
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -98,7 +102,7 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-005)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
@@ -107,7 +111,7 @@ _Última verificação: 2026-10-17 (após R-002)_
 | F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pronto | `GET /api/usuarios`, `PUT /api/usuarios/:id/ativo`, `PUT /api/auth/senha`; telas `Usuarios.js` e `MinhaConta.js`; testes em `usuarios.test.js` e `limite-senha.test.js` (R-004) |
 | F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); depósitos e categorias: API e tela Cadastros (`cadastrosController.js`, `Cadastros.js`, testes em `cadastros.test.js`, R-002); templates e checklists sem edição (R-039) |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
-| F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001; depósito escolhido numa lista desde R-002 (verificado no navegador); exige código completo (prefixo automático só via API, R-005) |
+| F-06 | Cadastrar equipamento | Pronto | Depósito escolhido numa lista (R-002); código automático pelo prefixo ou código completo, em maiúsculas ou não (R-005); testes em `equipamentos.test.js`; verificado no navegador |
 | F-07 | Editar equipamento / colocar em manutenção | Parcial | API `PUT /equipamentos/:id` pronta; sem tela (`equipamentos.atualizar` não é usado) |
 | F-08 | Detalhe do equipamento (histórico, problemas) | Parcial | API `GET /equipamentos/:id` pronta; sem tela |
 | F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |

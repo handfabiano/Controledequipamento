@@ -5,6 +5,40 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-19 — R-005: código automático pelo prefixo na tela
+
+**O quê**
+- Formulário de novo equipamento: "Numerar automaticamente" vem marcado e o campo pede só o
+  prefixo (MIC vira MIC0001, MIC0002...); desmarcado, pede o código completo. O aviso de sucesso
+  mostra o código gerado. Fechar o formulário por qualquer caminho limpa o que foi digitado.
+- A API aceita prefixo e código em minúsculas ou com espaços nas pontas (o validator normaliza);
+  antes recusava `mic`.
+- `gerarCodigo` (`server/database/init.js`): continua usando o número seguinte ao maior do
+  prefixo, mas se o maior for 9999 (um código manual alto) usa o menor número livre; antes
+  todo cadastro automático daquele prefixo passava a falhar. Sem número livre, 400 com mensagem.
+- `mensagemDeErro` (client) mostra o motivo dos erros do express-validator (`details[0].msg`)
+  em vez de só "Dados inválidos"; vale para todas as telas que a usam.
+
+**Por quê**
+- R-005: a tela exigia o código completo, e quem cadastra não sabe o próximo número livre.
+
+**Verificado**
+- `npm test`: 149/149 em SQLite e em Postgres 16 local. Testes novos em `equipamentos.test.js`:
+  minúsculas e espaços normalizados, código manual sem prefixo, formatos inválidos dão 400,
+  ZZZ9999 manual seguido de ZZZ0001 e ZZZ0002 automáticos. O teste de minúsculas falha sem a
+  mudança no validator.
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo em `NODE_ENV=production`): `mic` gerou
+  MIC0001 e depois MIC0002; `cai0042` manual gerou CAI0042 e o automático seguinte CAI0043;
+  MES9999 manual seguido de MES0001 automático; prefixo com 2 letras barrado pelo navegador;
+  formulário reaberto volta limpo e no modo automático. Sem erros de JavaScript.
+- Revisões: simplify (formato do campo numa tabela só, normalização no validator), code-review
+  high (código 9999 travando a numeração, texto da dica, cursor ao forçar maiúsculas, motivo do
+  erro escondido, formulário não limpo ao fechar, estilo do checkbox) e security-review sem
+  achados.
+
+---
+
 ## 2026-10-17 — R-002: depósitos e categorias pela tela
 
 **O quê**

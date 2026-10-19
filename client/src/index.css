@@ -94,6 +94,24 @@ code {
   font-size: 14px;
 }
 
+.form-group .checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: normal;
+}
+
+.form-group .checkbox-inline input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.maiusculas {
+  text-transform: uppercase;
+}
+
 .form-group textarea {
   min-height: 80px;
   resize: vertical;

@@ -213,11 +213,10 @@ const equipamentosController = {
 
       // Se foi fornecido apenas o prefixo (3 letras), gerar código automaticamente
       const usouPrefixo = Boolean(prefixo && !codigo);
+      const semCodigoLivre = () => res.status(400).json({ error: `Não há mais códigos livres com o prefixo ${prefixo}` });
       if (usouPrefixo) {
-        if (prefixo.length !== 3 || !/^[A-Z]{3}$/.test(prefixo)) {
-          return res.status(400).json({ error: 'Prefixo deve conter exatamente 3 letras maiúsculas (ex: MIC, CAI, MES)' });
-        }
-        codigo = await gerarCodigo(prefixo);
+        codigo = await gerarCodigo(prefixo); // o validator já garantiu 3 letras maiúsculas
+        if (!codigo) return semCodigoLivre();
       }
 
       // Validar formato do código (XXX0000)
@@ -258,6 +257,7 @@ const equipamentosController = {
         // recusa a segunda (UNIQUE). Para código automático, tenta de novo com o próximo.
         if (!erroDeUnicidade(error) || !usouPrefixo) throw error;
         codigo = await gerarCodigo(prefixo);
+        if (!codigo) return semCodigoLivre();
         result = await inserir();
       }
 

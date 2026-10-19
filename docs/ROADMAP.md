@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 65%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-18, após R-008 (F-24 Pronto) e R-002 (F-04 e F-06 seguem parciais por templates e prefixo).
+**Conclusão do sistema: 67%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-19, após R-005 (F-06 Pronto).
 
 ---
 
@@ -26,7 +26,7 @@ Sem estes itens o sistema não funciona em produção.
 | R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pronto (2026-10-17) | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
 | R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
 | R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pronto (2026-10-15) | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
-| R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pendente | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
+| R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pronto (2026-10-19) | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pronto (2026-10-16) | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
 | R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pronto (2026-10-17) | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
@@ -80,5 +80,8 @@ Sem estes itens o sistema não funciona em produção.
 
 ## Fila atual
 
-1. **R-005** — código automático por prefixo no cadastro de equipamento (Alto, P, depende de R-002, pronto).
-2. **R-007** — aguardando acesso (Vercel e banco de produção).
+Fase 0 concluída, exceto R-007 (aguardando acesso à Vercel e ao banco de produção).
+
+1. **R-010** — transferência escolhendo origem e destino por nome e designando responsáveis (Fase 1, Alto, M, depende de R-002 e R-004, prontos).
+2. **R-012** — detalhe do equipamento (Fase 1, Alto, M).
+3. **R-014** — detalhe do evento (Fase 1, Alto, M, depende de R-004, pronto).

@@ -68,6 +68,25 @@ test('criar equipamento por prefixo gera código sequencial e histórico', async
   const eq = await obter(id1);
   assert.strictEqual(eq.codigo, 'MIC0004'); // seed tem MIC0001..MIC0003
   assert.strictEqual(eq.historico[0].tipo_movimentacao, 'criacao');
+
+  // Minúsculas e espaços nas pontas são normalizados, no prefixo e no código completo
+  assert.strictEqual((await obter(await criarEquipamento({ prefixo: ' mic ' }))).codigo, 'MIC0005');
+  const soCodigo = await srv.req('POST', '/api/equipamentos', {
+    token: t.coordenador, body: { nome: 'Código manual', categoria_id: 1, codigo: 'xyz0007' }
+  });
+  assert.strictEqual(soCodigo.status, 201, soCodigo.text);
+  assert.strictEqual(soCodigo.body.codigo, 'XYZ0007');
+
+  for (const errado of [{ prefixo: 'MI1' }, { prefixo: 'MICR' }, { codigo: 'MIC12' }]) {
+    const r = await srv.req('POST', '/api/equipamentos', { token: t.coordenador, body: { nome: 'Errado', categoria_id: 1, ...errado } });
+    assert.strictEqual(r.status, 400, JSON.stringify(errado));
+  }
+});
+
+test('código manual 9999 não trava a numeração automática do prefixo', async () => {
+  await criarEquipamento({ codigo: 'ZZZ9999' });
+  assert.strictEqual((await obter(await criarEquipamento({ prefixo: 'ZZZ' }))).codigo, 'ZZZ0001');
+  assert.strictEqual((await obter(await criarEquipamento({ prefixo: 'ZZZ' }))).codigo, 'ZZZ0002');
 });
 
 test('criar equipamento: código duplicado, categoria e depósito inexistentes dão 400', async () => {
