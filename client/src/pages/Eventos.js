@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { eventos, equipamentos as equipamentosAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { STATUS_EVENTO_ATIVO } from '../statusEvento';
 import './Eventos.css';
-
-// Eventos que ainda aceitam alterações (espelha as regras do servidor)
-const STATUS_ATIVOS = ['planejamento', 'aprovado', 'em_andamento'];
 
 // Próxima etapa que o coordenador pode dar a cada evento
 const PROXIMA_ETAPA = {
@@ -222,7 +220,7 @@ function Eventos() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    {STATUS_ATIVOS.includes(evento.status) && (
+                    {STATUS_EVENTO_ATIVO.includes(evento.status) && (
                       <button
                         className="btn btn-sm btn-primary"
                         onClick={() => {
@@ -249,7 +247,7 @@ function Eventos() {
                         {PROXIMA_ETAPA[evento.status].rotulo}
                       </button>
                     )}
-                    {STATUS_ATIVOS.includes(evento.status) &&
+                    {STATUS_EVENTO_ATIVO.includes(evento.status) &&
                       (isCoordenador() || evento.criado_por === user?.id) && (
                       <button
                         className="btn btn-sm btn-danger"

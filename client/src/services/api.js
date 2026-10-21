@@ -37,8 +37,12 @@ api.interceptors.response.use(
   }
 );
 
-// Mensagem de erro da API ({ error }) ou o texto padrão da tela
-export const mensagemDeErro = (error, padrao) => error.response?.data?.error || padrao;
+// Mensagem de erro da API ou o texto padrão da tela. Nos erros do express-validator o `error` é
+// só "Dados inválidos"; o motivo vem no primeiro item de `details`.
+export const mensagemDeErro = (error, padrao) => {
+  const dados = error.response?.data;
+  return dados?.details?.[0]?.msg || dados?.error || padrao;
+};
 
 // Autenticação
 export const auth = {
@@ -48,9 +52,11 @@ export const auth = {
   trocarSenha: (senha_atual, nova_senha) => api.put('/auth/senha', { senha_atual, nova_senha }),
 };
 
-// Usuários (coordenador); o cadastro usa auth.register
+// Usuários (coordenador, exceto `ativos`); o cadastro usa auth.register
 export const usuarios = {
   listar: () => api.get('/usuarios'),
+  // Nome e perfil dos ativos, para qualquer usuário logado escolher pessoas pelo nome
+  ativos: () => api.get('/usuarios/ativos'),
   definirAtivo: (id, ativo) => api.put(`/usuarios/${id}/ativo`, { ativo }),
 };
 

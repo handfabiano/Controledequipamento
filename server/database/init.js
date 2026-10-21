@@ -46,22 +46,18 @@ function gerarTombamento() {
   return `TOMB-${ano}-${random}`;
 }
 
-// Função para gerar código no formato XXX0000
+// Próximo código XXX0000 do prefixo: o seguinte ao maior já usado; se o maior for 9999 (um
+// código manual alto, por exemplo), o menor número livre. null quando os 9999 estão ocupados.
 async function gerarCodigo(prefixo) {
-  // Buscar o último código com esse prefixo
-  const ultimo = await getAsync(
-    'SELECT codigo FROM equipamentos WHERE codigo LIKE ? ORDER BY codigo DESC LIMIT 1',
-    [`${prefixo}%`]
-  );
+  const linhas = await allAsync('SELECT codigo FROM equipamentos WHERE codigo LIKE ?', [`${prefixo}%`]);
+  const usados = new Set(linhas.map((l) => parseInt(l.codigo.slice(3), 10)));
 
-  let numero = 1;
-  if (ultimo) {
-    // Extrair o número do código (últimos 4 dígitos)
-    const numeroStr = ultimo.codigo.slice(-4);
-    numero = parseInt(numeroStr, 10) + 1;
+  let numero = Math.max(0, ...usados) + 1;
+  if (numero > 9999) {
+    numero = 1;
+    while (usados.has(numero)) numero++;
+    if (numero > 9999) return null;
   }
-
-  // Formatar como XXX0000
   return `${prefixo}${numero.toString().padStart(4, '0')}`;
 }
 

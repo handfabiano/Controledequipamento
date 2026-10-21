@@ -12,12 +12,12 @@ Severidade: **Crítico** · **Alto** · **Médio** · **Baixo**. Esforço: **P**
 
 ## 0. Resumo executivo
 
-_Última verificação: 2026-10-18 (após R-002 e R-008)_
+_Última verificação: 2026-10-19 (após R-012)_
 
 | Indicador | Valor | Como foi medido |
 |---|---|---|
-| Conclusão funcional | **65%** | Inventário da seção 2: (9 Pronto + 0,5 × 13 Parcial) / 24 itens (F-24 Pronto após R-008; R-002 avançou F-04 e F-06, que seguem parciais) |
-| Testes do backend | 148/148 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-18, R-002 sobre o `main` com R-008); no CI desde o PR #22 |
+| Conclusão funcional | **75%** | Inventário da seção 2: (14 Pronto + 0,5 × 8 Parcial) / 24 itens (F-07, F-08 e F-10 Pronto após R-012) |
+| Testes do backend | 155/155 passando em SQLite e em Postgres 16 | `npm test` e `TEST_DATABASE_URL=... npm test`, local (2026-10-19, R-012); no CI desde o PR #22 |
 | Build do frontend | OK (só avisos de source map do `html5-qrcode`) | `cd client && npm run build` |
 | CI no `main` | Verde | GitHub Actions, run 21 (`ci.yml`) |
 | Vulnerabilidades (produção, backend) | 8 (1 crítica, 5 altas, 2 baixas) | `npm audit --omit=dev` |
@@ -43,6 +43,18 @@ Cadastros, e o cadastro de equipamento escolhe o depósito numa lista em vez de 
 **Atualização 2026-10-17 (R-008):** o schema passou a ter migrações versionadas, aplicadas uma
 vez cada; cold starts simultâneos em banco vazio não duplicam mais o catálogo (verificado em
 SQLite e Postgres 16, inclusive sem a trava, quando o teste falha).
+
+**Atualização 2026-10-19 (R-005):** o cadastro de equipamento numera sozinho pelo prefixo
+(MIC → MIC0001, MIC0002...) ou aceita o código completo; com isso a Fase 0 do roadmap está
+feita, exceto verificar o deploy real (R-007).
+
+**Atualização 2026-10-19 (R-010):** a solicitação de transferência escolhe origem, destino e
+quem aprova cada etapa pelo nome; cada pessoa vê só os botões das etapas que o servidor deixa
+ela aprovar. Achados novos: R-043 e R-044.
+
+**Atualização 2026-10-19 (R-012):** cada equipamento tem uma tela de detalhe com dados,
+problemas (resolver) e histórico; gestores editam e põem em manutenção por ela. Achados
+novos: R-045 a R-048.
 
 **Estado geral.** O núcleo de regras do backend (status derivado dos equipamentos,
 transferência com aprovação tripla, ciclo de vida de eventos, checklist) está bem feito e
@@ -98,7 +110,7 @@ aprovar em 3 etapas, cancelar).
 
 ## 2. Funcionalidades
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-012)_
 
 | ID | Funcionalidade | Status | Evidência |
 |---|---|---|---|
@@ -107,13 +119,13 @@ _Última verificação: 2026-10-17 (após R-002)_
 | F-03 | Gestão de usuários (listar, criar, desativar, trocar senha) | Pronto | `GET /api/usuarios`, `PUT /api/usuarios/:id/ativo`, `PUT /api/auth/senha`; telas `Usuarios.js` e `MinhaConta.js`; testes em `usuarios.test.js` e `limite-senha.test.js` (R-004) |
 | F-04 | Cadastros base (categorias, depósitos, templates, checklists) | Parcial | Catálogo inicial em todo banco (`server/database/catalogo.js`, R-001); depósitos e categorias: API e tela Cadastros (`cadastrosController.js`, `Cadastros.js`, testes em `cadastros.test.js`, R-002); templates e checklists sem edição (R-039) |
 | F-05 | Listar/buscar equipamentos com filtros e paginação | Pronto | `equipamentosController.listar`; `Equipamentos.js` |
-| F-06 | Cadastrar equipamento | Parcial | Funciona em banco novo desde R-001; depósito escolhido numa lista desde R-002 (verificado no navegador); exige código completo (prefixo automático só via API, R-005) |
-| F-07 | Editar equipamento / colocar em manutenção | Parcial | API `PUT /equipamentos/:id` pronta; sem tela (`equipamentos.atualizar` não é usado) |
-| F-08 | Detalhe do equipamento (histórico, problemas) | Parcial | API `GET /equipamentos/:id` pronta; sem tela |
-| F-09 | Reportar problema | Pronto | `reportarProblema` + modal em `Equipamentos.js` |
-| F-10 | Resolver problema | Parcial | API pronta; `equipamentos.resolverProblema` não é usado no cliente |
+| F-06 | Cadastrar equipamento | Pronto | Depósito escolhido numa lista (R-002); código automático pelo prefixo ou código completo, em maiúsculas ou não (R-005); testes em `equipamentos.test.js`; verificado no navegador |
+| F-07 | Editar equipamento / colocar em manutenção | Pronto | Botões Editar e Colocar em/Liberar da manutenção em `EquipamentoDetalhe.js` (gestor); a API recusa manutenção em evento ou transferência e troca de depósito em transferência (D-017); testes em `equipamentos.test.js`; verificado no navegador (R-012) |
+| F-08 | Detalhe do equipamento (histórico, problemas) | Pronto | Tela `/equipamentos/:id` (`EquipamentoDetalhe.js`), aberta pelo código ou por Detalhes na lista; histórico ainda mostra IDs em movimentações antigas (R-045) e não tem as mudanças automáticas de status (R-046) |
+| F-09 | Reportar problema | Pronto | `ReportarProblemaModal.js`, na lista e no detalhe; mostra o motivo do erro da API (R-012) |
+| F-10 | Resolver problema | Pronto | Botão Resolver na lista de problemas do detalhe (gestor); verificado no navegador (R-012) |
 | F-11 | QR Code: leitura, geração e etiqueta | Parcial | Leitura pronta (`QRScanner.js`); geração/etiqueta só na API; `gerarEtiqueta` devolve URL que, aberta direto, não leva o token Bearer (inferido: 401) |
-| F-12 | Transferência com aprovação tripla | Parcial | API completa e testada; tela pede **IDs numéricos** de origem/destino (`Transferencias.js:285,310`) e não designa responsáveis |
+| F-12 | Transferência com aprovação tripla | Pronto | Origem, destino e responsáveis escolhidos pelo nome (`Transferencias.js`, `GET /usuarios/ativos`); a lista traz `origem_nome`, `destino_nome` e `pode_aprovar` calculado no servidor; testes em `transferencias.test.js`; fluxo solicitar → 3 aprovações → concluída executado no navegador (R-010). Regras a fechar: R-043, R-044 |
 | F-13 | Transferência rápida entre responsáveis (mesmo evento) | Parcial | API `POST /transferencias/rapida`; sem tela |
 | F-14 | Transferência entre eventos simultâneos | Parcial | API `POST /transferencias/entre-eventos`; sem tela |
 | F-15 | Criar/listar eventos | Parcial | Tela não envia responsáveis; não há edição de evento nem remoção de equipamento alocado |
@@ -127,8 +139,8 @@ _Última verificação: 2026-10-17 (após R-002)_
 | F-23 | Deploy de produção funcionando | Bloqueado | Sem acesso à Vercel/banco de produção para verificar |
 | F-24 | Migrations de schema | Pronto | `server/database/migracoes.js` aplica `migracoes/NNN_*.sql` uma vez, sob trava entre instâncias (R-008, testes em `migracoes.test.js`) |
 
-Funcionalidades "de fachada" (API pronta, sem uso na tela): F-07, F-08, F-10, F-11
-(geração), F-13, F-14, F-19, além de `transferencias.buscarPorId`.
+Funcionalidades "de fachada" (API pronta, sem uso na tela): F-11 (geração), F-13, F-14,
+F-19, além de `transferencias.buscarPorId`.
 
 ---
 
@@ -170,19 +182,19 @@ _Última verificação: 2026-10-17 (após R-008)_
 
 ## 4. Backend / API
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-010)_
 
-40 rotas (contadas em 2026-10-17; a contagem anterior, 28, estava errada) em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
+41 rotas (contadas em 2026-10-19) em `server/routes/index.js`, todas sob `/api`, mais `GET /health`. O `authMiddleware`
 confere a cada requisição que o usuário do token existe e está ativo, e usa o perfil do banco
 (R-023).
 
 | Grupo | Rotas | Autorização | Validação |
 |---|---|---|---|
 | Auth | login, register, me, senha | login público com rate limit; register aberto só no banco vazio (com `BOOTSTRAP_TOKEN` opcional); senha: o próprio usuário, com limite de tentativas por usuário | manual |
-| Usuários | 2 (listar, ativar/desativar) | coordenador; não altera a própria conta | manual (`inteiro`) |
+| Usuários | 3 (listar, ativar/desativar, ativos) | coordenador; não altera a própria conta. `GET /usuarios/ativos` (só id, nome e perfil, para escolher pessoas na transferência): autenticado | manual (`inteiro`) |
 | Depósitos e categorias | 6 (depósitos: listar, criar, editar; categorias: listar, criar, editar) | listar: autenticado; criar e editar: coordenador | manual (`services/validacao.js`, D-014) |
 | Equipamentos | 9 (sem a lista de categorias) | escrita: coordenador e responsáveis (`gestor`); reportar: qualquer autenticado | express-validator (`validators/equipamentoValidator.js`) |
-| Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento | manual (`inteiro`, `informado`) |
+| Transferências | 7 | criar: qualquer autenticado; aprovar por etapa/designado; ver por envolvimento; lista e detalhe dizem em `pode_aprovar` quais etapas o usuário pode aprovar (D-016) | manual (`inteiro`, `informado`) |
 | Eventos | 7 | criar: gestor; alocar: equipe do evento; status: coordenador (cancelar: criador também) | manual |
 | Notificações | 4 | só as do próprio usuário | — |
 | Dashboard | 1 | autenticado | — |
@@ -201,6 +213,10 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
   - `authLimiter` importado e não usado em `server/index.js:7`.
   - Ids acima do `INTEGER` do Postgres dão 500 nas rotas que usam `inteiro` (reproduzido em
     `PUT /api/usuarios/99999999999/ativo`, 2026-10-17). → R-041.
+  - O responsável designado de entrega/recebimento pode ser de qualquer perfil (lido em
+    `lerResponsaveis`, `transferenciasController.js:62`; só o coordenador é conferido). → R-043.
+  - Equipamento alocado em evento aceita transferência com origem depósito, e a conclusão não
+    devolve a alocação (`moverAlocacaoEmEventos` só olha `origem_tipo = 'evento'`). → R-044.
   - Nome único de depósito e categoria é checado só na API, não no banco. → R-040.
 - **Edge Functions**: não há.
 
@@ -208,17 +224,15 @@ confere a cada requisição que o usuário do token existe e está ativo, e usa 
 
 ## 5. Frontend
 
-_Última verificação: 2026-10-17 (após R-002)_
+_Última verificação: 2026-10-19 (após R-012)_
 
-Telas: Login, Dashboard, Equipamentos, Transferências, Eventos, Cadastros (depósitos e
+Telas: Login, Dashboard, Equipamentos (lista e detalhe), Transferências, Eventos, Cadastros (depósitos e
 categorias, só coordenador), Usuários (só coordenador) e Minha conta (troca de senha)
 (`client/src/App.js`).
 
-- **Faltam telas**: templates e checklists, detalhe de equipamento,
+- **Faltam telas**: templates e checklists,
   detalhe de evento, transferência rápida e entre eventos.
-- **UX quebrada**: transferência por ID numérico digitado;
-  erro do servidor descartado ao reportar problema (`Equipamentos.js:138` mostra mensagem
-  genérica, mas a API exige 10+ caracteres); busca dispara requisição a cada tecla; feedback
+- **UX quebrada**: busca dispara requisição a cada tecla; feedback
   só por `alert()`; não há estado de erro na tela (dashboard falha em silêncio).
 - **Estado de sessão**: usuário restaurado do `localStorage` sem revalidar (`AuthContext.js:22`);
   401 leva ao login.

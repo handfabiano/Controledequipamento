@@ -146,3 +146,31 @@ dos commits (marcadas como "retroativa").
   `001` não é reaplicada, então um banco antigo com colunas faltando precisa de migração própria
   (R-042). O `index.js` memoriza a inicialização, e requisições simultâneas no cold start esperam
   a mesma.
+
+## D-016 — Quem pode aprovar cada etapa vem do servidor (`pode_aprovar`)
+- **Data**: 2026-10-19
+- **Decisão**: a lista e o detalhe de transferências trazem `pode_aprovar: { coordenador,
+  entrega, recebimento }`, calculado com a mesma `verificarAutorizacaoDaEtapa` que a rota de
+  aprovação usa. A tela mostra os botões a partir disso, sem repetir a regra. Para escolher
+  pessoas pelo nome, `GET /usuarios/ativos` devolve só `id`, `nome` e `tipo` dos usuários ativos
+  a qualquer autenticado; a lista completa (`GET /usuarios`, com e-mail) segue só do coordenador.
+- **Motivo**: a cópia da regra no client (`canApprove`) já tinha divergido do servidor (designado,
+  entrega antes do recebimento). Qualquer perfil pode solicitar transferência e designar quem
+  aprova, então precisa ver nomes e perfis; e-mail não é necessário.
+- **Consequências**: mudar quem aprova uma etapa é mudar só o servidor. Nomes e perfis da equipe
+  ficam visíveis a todo usuário logado.
+
+## D-017 — Manutenção só no depósito; histórico com mudanças de status estruturadas
+- **Data**: 2026-10-19
+- **Decisão**: `PUT /equipamentos/:id` recusa entrar em manutenção quando o equipamento está
+  alocado em evento ativo ou em transferência, e recusa trocar o depósito durante uma
+  transferência. A troca de status vira uma linha `tipo_movimentacao = 'status'` com o status
+  anterior em `origem` e o novo em `destino`; mudanças de dados viram uma linha `atualizacao`
+  com os campos alterados ("Alterado: marca, depósito"), e salvar sem mudar nada não registra
+  nada. A tela de edição envia só os campos que a pessoa mudou.
+- **Motivo**: a manutenção nunca é sobrescrita pelo status derivado, então em evento ou em
+  trânsito ela esconderia onde o equipamento está. O depósito, durante a transferência, é o que
+  ela vai mudar ao ser concluída. Status em colunas permite a tela mostrar rótulos; enviar só o
+  alterado evita desfazer o que outra pessoa mudou enquanto o formulário estava aberto.
+- **Consequências**: para manter um equipamento em evento, devolvê-lo antes. Mudanças
+  automáticas de status ainda não entram no histórico (R-046).

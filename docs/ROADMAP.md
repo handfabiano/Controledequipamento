@@ -12,7 +12,7 @@ baixa cujas dependências estejam `Pronto`).
 - Achados novos durante o trabalho viram itens novos (próximo ID livre), nunca correções
   silenciosas.
 
-**Conclusão do sistema: 65%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-18, após R-008 (F-24 Pronto) e R-002 (F-04 e F-06 seguem parciais por templates e prefixo).
+**Conclusão do sistema: 75%** (fórmula em [DECISOES.md](./DECISOES.md#d-002)). Atualizada em 2026-10-19, após R-012 (F-07, F-08 e F-10 Pronto).
 
 ---
 
@@ -26,7 +26,7 @@ Sem estes itens o sistema não funciona em produção.
 | R-002 | API e telas de coordenador para depósitos e categorias (listar, criar, editar) | Pronto (2026-10-17) | Alto | M | R-001 | Coordenador cria depósito e categoria pela tela e os vê no cadastro de equipamento; não-coordenador recebe 403; testes de API |
 | R-003 | URL da API em produção: padrão relativo `/api` no build, documentar `REACT_APP_API_URL` | Pronto (2026-10-14) | Crítico | P | — | `npm run build` sem a variável não contém `localhost:3001`; DEPLOY.md atualizado |
 | R-004 | Gestão de usuários: listar, cadastrar pela tela, desativar, trocar a própria senha | Pronto (2026-10-15) | Alto | M | — | Coordenador cadastra e desativa usuário pela tela; usuário desativado não loga; testes de API para cada rota |
-| R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pendente | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
+| R-005 | Cadastro de equipamento com opção de código automático por prefixo (a lista de depósitos entrou com R-002) | Pronto (2026-10-19) | Alto | P | R-002 | Criar com prefixo pela tela gera `XXX0001` |
 | R-006 | Suíte de testes também contra Postgres no CI (service container) | Pronto (2026-10-16) | Alto | M | — | Job do CI com Postgres verde rodando `npm test` |
 | R-007 | Verificar o deploy real (variáveis na Vercel, banco, `/health`, logs, RLS se for Supabase) | Bloqueado | Crítico | P | acesso do usuário | Checklist de deploy preenchido com evidência; app responde login em produção. **Bloqueio**: falta acesso à Vercel e ao banco de produção |
 | R-008 | Migrations versionadas (tabela de controle) no lugar do DDL a cada cold start; inclui rodar o catálogo inicial uma única vez (hoje dois cold starts simultâneos em banco vazio podem duplicá-lo) | Pronto (2026-10-17) | Alto | M | R-006 | Script de migração idempotente nos dois drivers; adicionar coluna nova aplica em banco existente; catálogo semeado uma vez; testado no CI |
@@ -35,9 +35,9 @@ Sem estes itens o sistema não funciona em produção.
 
 | ID | Tarefa | Status | Prioridade | Esforço | Depende de | Critério de pronto |
 |---|---|---|---|---|---|---|
-| R-010 | Transferência: escolher origem/destino por nome (depósitos, eventos, usuários) e designar responsáveis | Pendente | Alto | M | R-002, R-004 | Nenhum campo de ID numérico na tela; fluxo completo (solicitar → 3 aprovações → concluída) executado no app |
+| R-010 | Transferência: escolher origem/destino por nome (depósitos, eventos, usuários) e designar responsáveis | Pronto (2026-10-19) | Alto | M | R-002, R-004 | Nenhum campo de ID numérico na tela; fluxo completo (solicitar → 3 aprovações → concluída) executado no app |
 | R-011 | Notificar perfis elegíveis quando a transferência não tem responsável designado | Pendente | Médio | P | — | Teste: criar sem designados notifica coordenadores |
-| R-012 | Detalhe do equipamento: histórico, problemas, resolver problema, editar, manutenção | Pendente | Alto | M | — | Cada ação da API F-07/F-08/F-10 acessível pela tela e exercitada no app |
+| R-012 | Detalhe do equipamento: histórico, problemas, resolver problema, editar, manutenção | Pronto (2026-10-19) | Alto | M | — | Cada ação da API F-07/F-08/F-10 acessível pela tela e exercitada no app |
 | R-013 | QR Code e etiqueta pela tela, com autenticação (buscar HTML com token) | Pendente | Médio | P | R-012 | Botão imprime etiqueta sem 401 |
 | R-014 | Detalhe do evento: equipamentos, responsáveis, transferência rápida e entre eventos | Pendente | Alto | M | R-004 | F-13, F-14, F-19 acessíveis pela tela e exercitadas no app |
 | R-015 | Evento: definir responsáveis na criação, editar evento, remover equipamento alocado | Pendente | Médio | M | R-004 | Rotas novas com teste; tela usa |
@@ -61,6 +61,12 @@ Sem estes itens o sistema não funciona em produção.
 | R-039 | API e tela de coordenador para templates de evento e seus checklists (criar, editar) | Pendente | Médio | M | R-002 | Coordenador cria um template com checklist pela tela e o usa ao criar evento; não-coordenador recebe 403; testes de API |
 | R-040 | Nome único de depósito e de categoria garantido no banco (índice em `LOWER(nome)`), não só na checagem da API. Atenção: o `LOWER` do SQLite só converte letras ASCII (`LOWER('DEPÓSITO')` dá `depÓsito`), então a chave normalizada deve ser calculada em JS | Pendente | Baixo | P | R-008 | Dois cadastros simultâneos com o mesmo nome: um 201, outro 400 (teste) |
 | R-041 | Ids acima do `INTEGER` do Postgres dão 500 nas rotas antigas (ex.: `PUT /api/usuarios/99999999999/ativo`); usar `idValido` de `services/validacao.js` | Pendente | Baixo | P | — | Mesmas rotas respondem 400/404 em SQLite e Postgres (teste) |
+| R-043 | Designar responsável de entrega/recebimento só com o perfil da etapa ou coordenador: hoje a API aceita qualquer usuário ativo (ex.: um técnico), que passa a poder aprovar a etapa; a tela já filtra, mas só como UX | Pendente | Médio | P | — | `POST /transferencias` com técnico em `responsavel_entrega_id` dá 400 (teste) |
+| R-044 | Transferência de equipamento alocado em evento ativo com origem depósito (ou sem origem) é aceita, e a conclusão não devolve a alocação do evento, que depois "libera" um equipamento que já saiu. A API deveria exigir a origem evento (ou deduzi-la); a tela só deixou de sugerir o depósito para equipamento em uso | Pendente | Médio | P | — | Teste: equipamento alocado em evento + origem depósito dá 400 ou vira origem evento; a alocação fica devolvida ao concluir |
+| R-045 | Histórico com nomes em vez de IDs: o cadastro grava "Depósito ID: 1" e a transferência concluída "deposito: 2"/"usuario: 7" em `origem`/`destino` (`equipamentosController.criar`, `transferenciasController`), e o detalhe do equipamento mostra isso | Pendente | Médio | P | — | Movimentações novas mostram nomes no detalhe (teste); decidir em DECISOES o que fazer com as antigas |
+| R-046 | Registrar no histórico as mudanças automáticas de status (`recalcularStatus`: problema, transferência, evento); hoje só a troca manual (manutenção) vira linha `status` | Pendente | Médio | P | — | Reportar problema grave e resolvê-lo deixam duas linhas `status` no histórico (teste) |
+| R-047 | Índice em `historico_movimentacoes(equipamento_id)` (o detalhe do equipamento lê o histórico a cada ação) e desempate por `id` nas outras listas por data (ex.: notificações) | Pendente | Baixo | P | R-008 | Migração com os dois arquivos; ordem estável em registros do mesmo segundo (teste) |
+| R-048 | Rótulos e cores de status em Transferências e Eventos com a mesma tabela/`Badge` do equipamento (hoje mostram o valor cru, ex.: "aprovada coordenador") | Pendente | Baixo | P | — | Status por extenso nas duas telas |
 | R-029 | Regra de quem pode solicitar transferência (hoje qualquer autenticado) | Pendente | Baixo | P | decisão do usuário | Regra registrada em DECISOES e testada |
 
 ## Fase 3 — Qualidade e pós-lançamento
@@ -80,5 +86,8 @@ Sem estes itens o sistema não funciona em produção.
 
 ## Fila atual
 
-1. **R-005** — código automático por prefixo no cadastro de equipamento (Alto, P, depende de R-002, pronto).
-2. **R-007** — aguardando acesso (Vercel e banco de produção).
+Fase 0 concluída, exceto R-007 (aguardando acesso à Vercel e ao banco de produção).
+
+1. **R-014** — detalhe do evento (Fase 1, Alto, M, depende de R-004, pronto).
+2. **R-013** — QR Code e etiqueta pela tela (Fase 1, Médio, P, depende de R-012, pronto).
+3. **R-043** e **R-044** — regras de transferência achadas no R-010 (Fase 2, Médio, P).

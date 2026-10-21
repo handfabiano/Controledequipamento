@@ -2,24 +2,6 @@
   width: 100%;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-}
-
-.page-header h1 {
-  font-size: 28px;
-  color: #333;
-  margin: 0;
-}
-
-.page-header-actions {
-  display: flex;
-  gap: 10px;
-}
-
 .filters {
   margin-bottom: 20px;
 }
@@ -30,33 +12,10 @@
   gap: 15px;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
-}
-
 .problema-indicator {
   margin-left: 5px;
   font-size: 16px;
   cursor: help;
-}
-
-.equipamento-info {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  font-size: 14px;
 }
 
 .pagination {
@@ -93,17 +52,7 @@
 }
 
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-
   .filters-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-row {
     grid-template-columns: 1fr;
   }
 

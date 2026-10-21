@@ -17,12 +17,38 @@ const {
 // Cláusula (e parâmetros) para só alterar transferências ainda não finalizadas
 const NAO_FINALIZADA = `status NOT IN (${placeholders(FINALIZADAS)})`;
 
-// Como confirmar que um local (depósito, evento ou usuário) existe, e como chamá-lo na mensagem
+// Tabela de cada tipo de local (depósito, evento ou usuário)
+const TABELA_LOCAL = { deposito: 'depositos', evento: 'eventos', usuario: 'usuarios' };
+
+// Como confirmar que um local existe, e como chamá-lo na mensagem
 const CONSULTA_LOCAL = {
-  deposito: ['SELECT id FROM depositos WHERE id = ?', 'Depósito'],
-  evento: ['SELECT * FROM eventos WHERE id = ?', 'Evento'],
-  usuario: ['SELECT id, nome, tipo FROM usuarios WHERE id = ? AND ativo = 1', 'Usuário']
+  deposito: [`SELECT id FROM ${TABELA_LOCAL.deposito} WHERE id = ?`, 'Depósito'],
+  evento: [`SELECT * FROM ${TABELA_LOCAL.evento} WHERE id = ?`, 'Evento'],
+  usuario: [`SELECT id, nome, tipo FROM ${TABELA_LOCAL.usuario} WHERE id = ? AND ativo = 1`, 'Usuário']
 };
+
+// Nome da origem e do destino, conforme o tipo, para as telas
+const nomeDoLocal = (lado) => {
+  const apelidos = Object.keys(TABELA_LOCAL).map((tipo) => `${lado}_${tipo}`);
+  return {
+    colunas: `COALESCE(${apelidos.map((a) => `${a}.nome`).join(', ')}) as ${lado}_nome`,
+    joins: Object.entries(TABELA_LOCAL).map(([tipo, tabela]) =>
+      `LEFT JOIN ${tabela} ${lado}_${tipo} ON t.${lado}_tipo = '${tipo}' AND ${lado}_${tipo}.id = t.${lado}_id`).join('\n')
+  };
+};
+const ORIGEM = nomeDoLocal('origem');
+const DESTINO = nomeDoLocal('destino');
+
+// Origem comum da listagem e do detalhe: equipamento, pessoas envolvidas e locais
+const FROM_TRANSFERENCIA = `
+  FROM transferencias t
+  LEFT JOIN equipamentos e ON t.equipamento_id = e.id
+  LEFT JOIN usuarios sol ON t.solicitante_id = sol.id
+  LEFT JOIN usuarios ent ON t.responsavel_entrega_id = ent.id
+  LEFT JOIN usuarios rec ON t.responsavel_recebimento_id = rec.id
+  LEFT JOIN usuarios coord ON t.coordenador_id = coord.id
+  ${ORIGEM.joins}
+  ${DESTINO.joins}`;
 
 // Busca o local. Devolve { registro } ou { erro } com a mensagem pronta.
 async function buscarLocal(tipo, id, rotulo) {
@@ -153,6 +179,17 @@ function verificarAutorizacaoDaEtapa(tipo, transferencia, usuario) {
   return null;
 }
 
+// Quais etapas o usuário pode aprovar agora: a tela mostra os botões por isto, sem repetir
+// as regras de verificarAutorizacaoDaEtapa
+function comEtapasAprovaveis(transferencia, usuario) {
+  const aberta = !FINALIZADAS.includes(transferencia.status);
+  const pode_aprovar = Object.fromEntries(TIPOS_APROVACAO.map((tipo) => [
+    tipo,
+    aberta && !transferencia[`aprovacao_${tipo}`] && !verificarAutorizacaoDaEtapa(tipo, transferencia, usuario)
+  ]));
+  return { ...transferencia, pode_aprovar };
+}
+
 // Marca a transferência como concluída e aplica seus efeitos (depósito, alocação, status e
 // histórico do equipamento). `atual` é a linha com as três aprovações já registradas.
 async function concluirTransferencia(atual, usuario, campo) {
@@ -208,13 +245,9 @@ const transferenciasController = {
                sol.nome as solicitante_nome,
                ent.nome as responsavel_entrega_nome,
                rec.nome as responsavel_recebimento_nome,
-               coord.nome as coordenador_nome
-        FROM transferencias t
-        LEFT JOIN equipamentos e ON t.equipamento_id = e.id
-        LEFT JOIN usuarios sol ON t.solicitante_id = sol.id
-        LEFT JOIN usuarios ent ON t.responsavel_entrega_id = ent.id
-        LEFT JOIN usuarios rec ON t.responsavel_recebimento_id = rec.id
-        LEFT JOIN usuarios coord ON t.coordenador_id = coord.id
+               coord.nome as coordenador_nome,
+               ${ORIGEM.colunas}, ${DESTINO.colunas}
+        ${FROM_TRANSFERENCIA}
         WHERE ${clause}
       `;
 
@@ -228,7 +261,7 @@ const transferenciasController = {
       query += ' ORDER BY t.data_solicitacao DESC, t.id DESC';
 
       const transferencias = await allAsync(query, valores);
-      res.json(transferencias);
+      res.json(transferencias.map((t) => comEtapasAprovaveis(t, req.user)));
     } catch (error) {
       console.error('Erro ao listar transferências:', error);
       res.status(500).json({ error: 'Erro ao listar transferências' });
@@ -246,13 +279,9 @@ const transferenciasController = {
                sol.nome as solicitante_nome, sol.email as solicitante_email,
                ent.nome as responsavel_entrega_nome, ent.email as responsavel_entrega_email,
                rec.nome as responsavel_recebimento_nome, rec.email as responsavel_recebimento_email,
-               coord.nome as coordenador_nome, coord.email as coordenador_email
-        FROM transferencias t
-        LEFT JOIN equipamentos e ON t.equipamento_id = e.id
-        LEFT JOIN usuarios sol ON t.solicitante_id = sol.id
-        LEFT JOIN usuarios ent ON t.responsavel_entrega_id = ent.id
-        LEFT JOIN usuarios rec ON t.responsavel_recebimento_id = rec.id
-        LEFT JOIN usuarios coord ON t.coordenador_id = coord.id
+               coord.nome as coordenador_nome, coord.email as coordenador_email,
+               ${ORIGEM.colunas}, ${DESTINO.colunas}
+        ${FROM_TRANSFERENCIA}
         WHERE t.id = ?
       `, [id]);
 
@@ -264,7 +293,7 @@ const transferenciasController = {
         return res.status(403).json({ error: 'Sem permissão para visualizar esta transferência' });
       }
 
-      res.json(transferencia);
+      res.json(comEtapasAprovaveis(transferencia, req.user));
     } catch (error) {
       console.error('Erro ao buscar transferência:', error);
       res.status(500).json({ error: 'Erro ao buscar transferência' });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dashboard } from '../services/api';
+import { dataHora } from '../formatacao';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
@@ -116,7 +117,7 @@ function Dashboard() {
                   </div>
                   <div className="activity-details">
                     <p>{activity.descricao}</p>
-                    <small>{new Date(activity.data).toLocaleString('pt-BR')}</small>
+                    <small>{dataHora(activity.data)}</small>
                   </div>
                 </li>
               ))}

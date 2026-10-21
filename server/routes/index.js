@@ -28,6 +28,7 @@ router.put('/auth/senha', authMiddleware, senhaLimiter, authController.trocarSen
 
 // Gestão de usuários (cadastro continua em /auth/register)
 router.get('/usuarios', authMiddleware, coordenador, usuariosController.listar);
+router.get('/usuarios/ativos', authMiddleware, usuariosController.listarAtivos);
 router.put('/usuarios/:id/ativo', authMiddleware, coordenador, usuariosController.definirAtivo);
 
 // Depósitos e categorias: todos consultam, só o coordenador cadastra e edita

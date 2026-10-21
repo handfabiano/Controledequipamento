@@ -5,6 +5,118 @@ cita os IDs do [ROADMAP](./ROADMAP.md) e a evidência da verificação.
 
 ---
 
+## 2026-10-19 — R-012: detalhe do equipamento
+
+**O quê**
+- Tela `/equipamentos/:id`, aberta pelo código ou pelo botão Detalhes na lista: dados do
+  equipamento, status e condição, problemas (com Resolver para gestores) e as últimas 20
+  movimentações. Gestores editam (só os campos alterados são enviados) e colocam ou tiram da
+  manutenção; todos podem reportar problema.
+- Componentes comuns: `CamposEquipamento` (cadastro e edição), `ReportarProblemaModal` (lista e
+  detalhe; agora mostra o motivo do erro da API) e as tabelas de rótulos em
+  `client/src/equipamento.js`. `dataHora` (`client/src/formatacao.js`) lê as datas UTC do SQLite
+  como UTC. Estilos comuns (`.page-header`, `.form-row`, `.form-actions`, `.empty-state`) foram
+  para `index.css`.
+- API (D-017): manutenção recusada para equipamento em evento ou em transferência; troca de
+  depósito recusada durante transferência; histórico com linha `status` (anterior → novo) e
+  "Alterado: campos" em vez de uma frase fixa a cada PUT; listas por data desempatadas por `id`
+  (antes, no SQLite, registros do mesmo segundo vinham em ordem trocada).
+
+**Por quê**
+- R-012: editar, ver histórico, resolver problema e manutenção só existiam na API (F-07, F-08,
+  F-10).
+
+**Verificado**
+- `npm test`: 155/155 em SQLite e em Postgres 16 local. Testes novos em `equipamentos.test.js`:
+  entrada e saída da manutenção no histórico, edição com o formulário completo (e salvar de novo
+  não registra nada), manutenção e troca de depósito recusadas em transferência (falha sem a
+  mudança), técnico recebe 403 ao editar e ao resolver. O teste de ordem do histórico falhava
+  antes do desempate por `id`.
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo): coordenadora abriu o detalhe pela
+  lista, reportou problema alto (status Com problema, condição Ruim), resolveu (Disponível, Bom),
+  colocou e tirou da manutenção, editou marca, modelo e depósito; histórico mostrou
+  "Disponível → Manutenção", "Manutenção → Disponível" e "Alterado: depósito, marca, modelo".
+  Técnico viu só "Reportar Problema" e o problema dele "Em aberto". Id inexistente mostra
+  "Equipamento não encontrado". O cadastro pela lista continua gerando códigos (roteiro do
+  R-005). Sem erros de JavaScript.
+- Revisões: simplify (campos e rótulos compartilhados, histórico estruturado, consultas em
+  paralelo), code-review high (edição desfazendo mudanças de outros, manutenção em transferência,
+  depósito trocado em transferência, fuso das datas, estilos de outras telas: corrigidos; histórico
+  incompleto e com IDs virou R-045 e R-046) e security-review sem achados.
+
+---
+
+## 2026-10-19 — R-010: transferência pelo nome, com responsáveis designados
+
+**O quê**
+- Nova transferência: origem e destino escolhidos em listas por nome (depósitos, eventos ainda
+  abertos, pessoas ativas), sem campo de ID. Ao escolher um equipamento disponível, a origem já
+  vem com o depósito onde ele está; para equipamento em uso, a origem fica para a pessoa escolher.
+  Um bloco opcional designa quem aprova cada etapa, filtrando pelas pessoas do perfil da etapa
+  (ou coordenador).
+- API: `GET /usuarios/ativos` (id, nome e perfil de quem está ativo, para qualquer autenticado);
+  lista e detalhe de transferências trazem `origem_nome`, `destino_nome` e `pode_aprovar` por
+  etapa, calculado pela mesma regra da aprovação (D-016). A tela mostra os botões a partir disso
+  em vez de repetir a regra.
+- Status de evento "aberto" num módulo só no client (`client/src/statusEvento.js`), usado em
+  Eventos e Transferências.
+
+**Por quê**
+- R-010: a tela pedia IDs numéricos digitados e não deixava designar responsáveis (F-12).
+
+**Verificado**
+- `npm test`: 152/152 em SQLite e em Postgres 16 local. Testes novos em
+  `transferencias.test.js`: lista de ativos (só id, nome, perfil; sem inativos; 401 sem token),
+  nomes de origem/destino na lista, `pode_aprovar` por usuário e etapa (inclusive designado,
+  depois da entrega, no detalhe e com a transferência cancelada).
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo): formulário sem campo numérico; origem
+  sugerida "Depósito Central"; destino "Galpão Leste" escolhido pelo nome; entrega designada a
+  João e recebimento a Maria. Ana aprovou como coordenadora, João viu só "Confirmar Entrega",
+  Maria confirmou o recebimento; status `concluida` e o equipamento passou a mostrar Galpão Leste.
+  Sem erros de JavaScript.
+- Revisões: simplify (regra de aprovação vinda do servidor, consultas de nomes montadas de uma
+  tabela, referências lidas à parte), code-review high (origem herdada de outro equipamento,
+  sugestão de depósito para equipamento em evento, listas desatualizadas: corrigidos; regras do
+  servidor viraram R-043 e R-044) e security-review sem achados.
+
+---
+
+## 2026-10-19 — R-005: código automático pelo prefixo na tela
+
+**O quê**
+- Formulário de novo equipamento: "Numerar automaticamente" vem marcado e o campo pede só o
+  prefixo (MIC vira MIC0001, MIC0002...); desmarcado, pede o código completo. O aviso de sucesso
+  mostra o código gerado. Fechar o formulário por qualquer caminho limpa o que foi digitado.
+- A API aceita prefixo e código em minúsculas ou com espaços nas pontas (o validator normaliza);
+  antes recusava `mic`.
+- `gerarCodigo` (`server/database/init.js`): continua usando o número seguinte ao maior do
+  prefixo, mas se o maior for 9999 (um código manual alto) usa o menor número livre; antes
+  todo cadastro automático daquele prefixo passava a falhar. Sem número livre, 400 com mensagem.
+- `mensagemDeErro` (client) mostra o motivo dos erros do express-validator (`details[0].msg`)
+  em vez de só "Dados inválidos"; vale para todas as telas que a usam.
+
+**Por quê**
+- R-005: a tela exigia o código completo, e quem cadastra não sabe o próximo número livre.
+
+**Verificado**
+- `npm test`: 149/149 em SQLite e em Postgres 16 local. Testes novos em `equipamentos.test.js`:
+  minúsculas e espaços normalizados, código manual sem prefixo, formatos inválidos dão 400,
+  ZZZ9999 manual seguido de ZZZ0001 e ZZZ0002 automáticos. O teste de minúsculas falha sem a
+  mudança no validator.
+- `cd client && npm run build`: ok.
+- Navegador (Playwright, build de produção, banco novo em `NODE_ENV=production`): `mic` gerou
+  MIC0001 e depois MIC0002; `cai0042` manual gerou CAI0042 e o automático seguinte CAI0043;
+  MES9999 manual seguido de MES0001 automático; prefixo com 2 letras barrado pelo navegador;
+  formulário reaberto volta limpo e no modo automático. Sem erros de JavaScript.
+- Revisões: simplify (formato do campo numa tabela só, normalização no validator), code-review
+  high (código 9999 travando a numeração, texto da dica, cursor ao forçar maiúsculas, motivo do
+  erro escondido, formulário não limpo ao fechar, estilo do checkbox) e security-review sem
+  achados.
+
+---
+
 ## 2026-10-17 — R-002: depósitos e categorias pela tela
 
 **O quê**

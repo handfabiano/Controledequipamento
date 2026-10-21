@@ -14,6 +14,17 @@ const usuariosController = {
     }
   },
 
+  // Para escolher pessoas pelo nome (destino e responsáveis de transferência): qualquer
+  // usuário logado, por isso sem e-mail nem situação
+  async listarAtivos(req, res) {
+    try {
+      res.json(await allAsync('SELECT id, nome, tipo FROM usuarios WHERE ativo = 1 ORDER BY nome'));
+    } catch (error) {
+      console.error('Erro ao listar usuários ativos:', error);
+      res.status(500).json({ error: 'Erro ao listar usuários' });
+    }
+  },
+
   async definirAtivo(req, res) {
     try {
       const id = inteiro(req.params.id);
